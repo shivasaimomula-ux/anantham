@@ -223,6 +223,9 @@
 				<div class="meta mono">
 					{profile.plant.family} · {profile.plant.traditions.length} traditions ·
 					<a class="src" href="https://www.wikidata.org" target="_blank" rel="noopener">LOTUS occurrence data</a>
+					{#if profile.provenance}
+						· <span class="prov">{profile.provenance.store ? 'served from store' : 'live from source'}{#if profile.provenance.fetchedAt} · {new Date(profile.provenance.fetchedAt).toISOString().slice(0, 10)}{/if}</span>
+					{/if}
 				</div>
 				<p class="blurb muted">{profile.plant.blurb}</p>
 			</div>
@@ -558,6 +561,9 @@
 	}
 	.meta .src {
 		color: var(--brass);
+	}
+	.meta .prov {
+		color: var(--good);
 	}
 	.blurb {
 		max-width: 44rem;

@@ -59,13 +59,15 @@ export type PlantProfile = {
 
 // Progressive-loading halves of a profile: the fast base renders immediately,
 // the targets layer streams in from a separate (time-budgeted) endpoint.
-export type PlantBase = Omit<PlantProfile, 'targets' | 'edges'>;
+export type Provenance = { store: boolean; fetchedAt: string | null; datasets: string[] };
+export type PlantBase = Omit<PlantProfile, 'targets' | 'edges'> & { provenance?: Provenance };
 export type PlantTargets = {
 	targets: TargetOut[];
 	edges: Edge[];
 	compoundTargets: Record<number, CompoundTargetRef[]>;
 	compoundChembl: Record<number, string | null>;
 	partial: boolean;
+	provenance?: Provenance;
 };
 
 // Client-side computed descriptors (RDKit) merged onto a compound for display.
