@@ -1,9 +1,12 @@
 // PubChem PUG REST — public domain. Compound identity, physicochemical
 // properties, and 3D structures.
 import { getJSON, getText } from '../http';
-import { cached } from '../cache';
+import { cached, createRateLimiter } from '../cache';
 
 const BASE = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
+// PubChem caps at ~5 req/sec per IP with no API key — pace well under that.
+const pcLimit = createRateLimiter(230);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PROPS = 'MolecularFormula,MolecularWeight,XLogP,TPSA,InChIKey,IUPACName,SMILES,ConnectivitySMILES';
 
 export type PubChemCompound = {
@@ -51,10 +54,16 @@ export function getCompound(c: { name: string; cid?: number }): Promise<PubChemC
 		const locator = c.cid
 			? `${BASE}/compound/cid/${c.cid}/property/${PROPS}/JSON`
 			: `${BASE}/compound/name/${encodeURIComponent(c.name)}/property/${PROPS}/JSON`;
-		// NOTE: a transient failure must THROW (not return null) so it is never
-		// cached — otherwise a busy upstream poisons the cache for hours.
-		const data = await getJSON<{ PropertyTable?: { Properties?: RawProp[] }; Fault?: { Code?: string } }>(locator);
-		if (data.Fault) throw new Error(`PubChem ${data.Fault.Code ?? 'Fault'}`); // e.g. PUGREST.ServerBusy
+		// Rate-limited, with a short back-off on PubChem's dynamic "ServerBusy".
+		// A persistent failure THROWS (never caches) so it self-heals on retry.
+		type Resp = { PropertyTable?: { Properties?: RawProp[] }; Fault?: { Code?: string } };
+		let data: Resp | null = null;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			data = await pcLimit(() => getJSON<Resp>(locator));
+			if (!data.Fault) break;
+			if (attempt < 2) await sleep(700 * (attempt + 1));
+		}
+		if (!data || data.Fault) throw new Error(`PubChem ${data?.Fault?.Code ?? 'Fault'}`);
 		const row = data.PropertyTable?.Properties?.[0];
 		if (!row) return null; // genuine "not found" — safe to cache
 		return toCompound(c.name, row);
@@ -66,9 +75,9 @@ export function getSDF(cid: number): Promise<string | null> {
 	return cached(`pc:sdf:${cid}`, 7 * 24 * 3600_000, async () => {
 		for (const type of ['3d', '2d']) {
 			try {
-				const sdf = await getText(`${BASE}/compound/cid/${cid}/record/SDF?record_type=${type}`, {
-					retries: 1
-				});
+				const sdf = await pcLimit(() =>
+					getText(`${BASE}/compound/cid/${cid}/record/SDF?record_type=${type}`, { retries: 1 })
+				);
 				if (sdf && sdf.includes('$$$$')) return sdf;
 			} catch {
 				/* try next */

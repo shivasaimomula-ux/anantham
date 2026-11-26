@@ -31,6 +31,27 @@ export async function cached<T>(rawKey: string, ttlMs: number, fn: () => Promise
 	return p;
 }
 
+// Rate limiter: serializes calls so they fire no faster than one per
+// `minIntervalMs` (used to stay under PubChem's ~5 req/sec cap).
+export function createRateLimiter(minIntervalMs: number) {
+	let last = 0;
+	let chain: Promise<unknown> = Promise.resolve();
+	return function rate<T>(fn: () => Promise<T>): Promise<T> {
+		const run = async (): Promise<T> => {
+			const wait = last + minIntervalMs - Date.now();
+			if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+			last = Date.now();
+			return fn();
+		};
+		const result = chain.then(run, run);
+		chain = result.then(
+			() => {},
+			() => {}
+		);
+		return result;
+	};
+}
+
 // Simple concurrency limiter so we don't fan out hundreds of requests at once.
 export function createLimiter(max: number) {
 	let active = 0;
