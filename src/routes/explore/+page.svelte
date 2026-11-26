@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { PLANT_INDEX } from '#lib/data/plants';
 	import { loadRDKit, analyze, classify } from '#lib/client/chem';
-	import type { PlantProfile, EnrichedCompound, TargetOut } from '#lib/types';
+	import type { PlantBase, PlantTargets, CompoundOut, EnrichedCompound, TargetOut } from '#lib/types';
 	import CompoundCard from '#lib/components/CompoundCard.svelte';
 	import CompoundDetail from '#lib/components/CompoundDetail.svelte';
 	import TargetNetwork from '#lib/components/TargetNetwork.svelte';
@@ -10,9 +10,12 @@
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let rdkit = $state<any>(null);
+	// Base (plant identity + compounds) loads fast; targets stream in after.
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
-	let profile = $state<PlantProfile | null>(null);
+	let profile = $state<PlantBase | null>(null);
 	let enriched = $state<EnrichedCompound[]>([]);
+	let targetsData = $state<PlantTargets | null>(null);
+	let targetStatus = $state<'loading' | 'ready' | 'error'>('loading');
 	let current = $state(PLANT_INDEX[0].slug);
 	let viewerItem = $state<ViewItem | null>(null);
 	let detailCompound = $state<EnrichedCompound | null>(null);
@@ -20,8 +23,8 @@
 	type Pathway = { source: string; name: string; fdr: number; genes: string[]; count: number };
 	let pathways = $state<{ pathways: Pathway[]; pathwayCount: number; targets: number } | null>(null);
 
-	function enrich(p: PlantProfile): EnrichedCompound[] {
-		const list: EnrichedCompound[] = p.compounds.map((c) => {
+	function enrich(compounds: CompoundOut[]): EnrichedCompound[] {
+		const list: EnrichedCompound[] = compounds.map((c) => {
 			let desc, qedClass;
 			if (rdkit && c.smiles) {
 				const d = analyze(rdkit, c.smiles);
@@ -41,10 +44,13 @@
 		status = 'loading';
 		profile = null;
 		enriched = [];
+		targetsData = null;
+		targetStatus = 'loading';
+		pathways = null;
 		try {
 			const res = await fetch(`/api/plant/${slug}`);
 			if (!res.ok) throw new Error('load failed');
-			const p: PlantProfile = await res.json();
+			const base: PlantBase = await res.json();
 			if (!rdkit) {
 				try {
 					rdkit = await loadRDKit();
@@ -52,20 +58,46 @@
 					/* structures/QED degrade gracefully */
 				}
 			}
-			profile = p;
-			enriched = enrich(p);
+			if (current !== slug) return;
+			profile = base;
+			enriched = enrich(base.compounds);
 			status = 'ready';
-			// network pharmacology (non-blocking)
-			pathways = null;
-			fetch(`/api/pathways/${slug}`)
-				.then((r) => (r.ok ? r.json() : null))
-				.then((d) => {
-					if (current === slug) pathways = d;
-				})
-				.catch(() => {});
+			// Heavy layers load independently so neither blocks the page.
+			loadTargets(slug);
+			loadPathways(slug);
 		} catch {
-			status = 'error';
+			if (current === slug) status = 'error';
 		}
+	}
+
+	async function loadTargets(slug: string) {
+		targetStatus = 'loading';
+		targetsData = null;
+		try {
+			const r = await fetch(`/api/plant/${slug}/targets`);
+			if (!r.ok) throw new Error('targets failed');
+			const t: PlantTargets = await r.json();
+			if (current !== slug) return;
+			targetsData = t;
+			// Merge ChEMBL id + per-compound targets back onto the displayed compounds.
+			enriched = enriched.map((c) => ({
+				...c,
+				chemblId: t.compoundChembl?.[c.cid] ?? c.chemblId,
+				targets: t.compoundTargets?.[c.cid] ?? c.targets
+			}));
+			targetStatus = 'ready';
+		} catch {
+			if (current === slug) targetStatus = 'error';
+		}
+	}
+
+	function loadPathways(slug: string) {
+		fetch(`/api/pathways/${slug}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((d) => {
+				if (current === slug) pathways = d;
+			})
+			.catch(() => {});
 	}
 
 	const maxLogFdr = 12;
@@ -89,8 +121,10 @@
 		profile
 			? {
 					compounds: profile.compounds.length,
-					targets: profile.targets.length,
-					diseases: new Set(profile.targets.flatMap((t) => t.diseases.map((d) => d.id))).size,
+					targets: targetsData ? targetsData.targets.length : null,
+					diseases: targetsData
+						? new Set(targetsData.targets.flatMap((t) => t.diseases.map((d) => d.id))).size
+						: null,
 					papers: profile.literature.count
 				}
 			: null
@@ -151,7 +185,7 @@
 		{#if stats}
 			{#each [['compounds', stats.compounds, 'actives surfaced'], ['protein targets', stats.targets, 'ChEMBL + bioactivity'], ['disease links', stats.diseases, 'Open Targets'], ['publications', stats.papers.toLocaleString(), 'PubMed']] as [k, v, sub]}
 				<div class="stat rise">
-					<div class="num display tnum">{v}</div>
+					<div class="num display tnum">{v === null ? '·' : v}</div>
 					<div class="k">{k}</div>
 					<div class="sub mono">{sub}</div>
 				</div>
@@ -247,18 +281,18 @@
 			</div>
 		</div>
 
-		{#if profile && profile.targets.length}
+		{#if targetsData && targetsData.targets.length}
 			<div class="netgrid">
 				<TargetNetwork
 					compounds={shown}
-					targets={profile.targets}
-					edges={profile.edges}
+					targets={targetsData.targets}
+					edges={targetsData.edges}
 					onSelectTarget={openTarget}
 				/>
 				<div class="legend">
-					<div class="ltitle mono">{profile.targets.length} protein targets</div>
+					<div class="ltitle mono">{targetsData.targets.length} protein targets{#if targetsData.partial} · partial{/if}</div>
 					<div class="ltlist">
-						{#each profile.targets as t}
+						{#each targetsData.targets as t}
 							<button class="lt" onclick={() => openTarget(t)}>
 								<div class="ltmain">
 									<div class="ltname display">{t.prefName}</div>
@@ -276,10 +310,16 @@
 					</p>
 				</div>
 			</div>
-		{:else if status === 'loading'}
-			<div class="sk netsk"></div>
+		{:else if targetStatus === 'loading'}
+			<div class="netloading">
+				<div class="sk netsk"></div>
+				<p class="loadnote mono"><span class="dot"></span> resolving targets live from ChEMBL · UniProt · Open Targets…</p>
+			</div>
 		{:else}
-			<p class="muted">No target data resolved for this selection.</p>
+			<p class="muted">
+				Target data couldn't be resolved right now — ChEMBL/EBI is responding slowly. The compounds
+				above are live; reload to retry the target network.
+			</p>
 		{/if}
 	</div>
 </section>
@@ -342,7 +382,7 @@
 
 <CompoundDetail
 	compound={detailCompound}
-	targets={profile?.targets ?? []}
+	targets={targetsData?.targets ?? []}
 	onClose={() => (detailCompound = null)}
 />
 <StructureViewer item={viewerItem} onClose={() => (viewerItem = null)} />
@@ -597,6 +637,21 @@
 	}
 	.netsk {
 		height: 460px;
+	}
+	.netloading {
+		position: relative;
+	}
+	.loadnote {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		font-size: 0.72rem;
+		color: var(--bone-dim);
+		text-align: center;
+		padding: 1rem;
 	}
 	.legend {
 		display: flex;

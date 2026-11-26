@@ -5,6 +5,9 @@ import { getJSON } from '../http';
 import { cached } from '../cache';
 
 const BASE = 'https://www.ebi.ac.uk/chembl/api/data';
+// ChEMBL/EBI can be slow and flaky — fail a single call fast (the orchestrator's
+// time budget returns partial results rather than letting one call hang).
+const CHEMBL_OPTS = { timeoutMs: 13000, retries: 1 } as const;
 
 export type ChemblTarget = {
 	targetChemblId: string;
@@ -29,7 +32,8 @@ async function resolveChemblId(inchikey: string | null, name: string): Promise<s
 	if (inchikey) {
 		try {
 			const r = await getJSON<{ molecules?: { molecule_chembl_id: string }[] }>(
-				`${BASE}/molecule.json?molecule_structures__standard_inchi_key=${inchikey}&limit=1`
+				`${BASE}/molecule.json?molecule_structures__standard_inchi_key=${inchikey}&limit=1`,
+				CHEMBL_OPTS
 			);
 			if (r.molecules?.[0]) return r.molecules[0].molecule_chembl_id;
 		} catch {
@@ -38,7 +42,8 @@ async function resolveChemblId(inchikey: string | null, name: string): Promise<s
 	}
 	try {
 		const r = await getJSON<{ molecules?: { molecule_chembl_id: string }[] }>(
-			`${BASE}/molecule/search.json?q=${encodeURIComponent(name)}&limit=1`
+			`${BASE}/molecule/search.json?q=${encodeURIComponent(name)}&limit=1`,
+			CHEMBL_OPTS
 		);
 		return r.molecules?.[0]?.molecule_chembl_id ?? null;
 	} catch {
@@ -56,7 +61,7 @@ type TargetDetail = {
 async function targetDetail(tid: string): Promise<{ accession: string | null; prefName: string; human: boolean }> {
 	return cached(`chembl:target:${tid}`, 7 * 24 * 3600_000, async () => {
 		try {
-			const d = await getJSON<TargetDetail>(`${BASE}/target/${tid}.json`);
+			const d = await getJSON<TargetDetail>(`${BASE}/target/${tid}.json`, CHEMBL_OPTS);
 			const accession = d.target_components?.find((c) => c.accession)?.accession ?? null;
 			return {
 				accession,
@@ -78,12 +83,22 @@ export function getTargets(inchikey: string | null, name: string, topN = 4): Pro
 
 			const byTarget = new Map<string, ChemblTarget>();
 
+			// Fetch curated mechanisms and measured bioactivities IN PARALLEL — they
+			// are independent, and ChEMBL latency dominates the whole pipeline.
+			const [mRes, aRes] = await Promise.allSettled([
+				getJSON<{ mechanisms?: { target_chembl_id?: string; mechanism_of_action?: string }[] }>(
+					`${BASE}/mechanism.json?molecule_chembl_id=${chemblId}&limit=20`,
+					CHEMBL_OPTS
+				),
+				getJSON<{ activities?: { target_chembl_id?: string; pchembl_value?: string | number }[] }>(
+					`${BASE}/activity.json?molecule_chembl_id=${chemblId}&pchembl_value__isnull=false&target_organism=Homo%20sapiens&limit=150&only=target_chembl_id,pchembl_value`,
+					CHEMBL_OPTS
+				)
+			]);
+
 			// (a) curated mechanisms
-			try {
-				const m = await getJSON<{
-					mechanisms?: { target_chembl_id?: string; mechanism_of_action?: string }[];
-				}>(`${BASE}/mechanism.json?molecule_chembl_id=${chemblId}&limit=20`);
-				for (const mech of m.mechanisms ?? []) {
+			if (mRes.status === 'fulfilled') {
+				for (const mech of mRes.value.mechanisms ?? []) {
 					if (!mech.target_chembl_id) continue;
 					byTarget.set(mech.target_chembl_id, {
 						targetChemblId: mech.target_chembl_id,
@@ -94,17 +109,11 @@ export function getTargets(inchikey: string | null, name: string, topN = 4): Pro
 						mechanism: mech.mechanism_of_action
 					});
 				}
-			} catch {
-				/* ignore */
 			}
 
 			// (b) measured bioactivities (human), aggregated by target
-			try {
-				const a = await getJSON<{
-					activities?: { target_chembl_id?: string; pchembl_value?: string | number }[];
-				}>(
-					`${BASE}/activity.json?molecule_chembl_id=${chemblId}&pchembl_value__isnull=false&target_organism=Homo%20sapiens&limit=300&only=target_chembl_id,pchembl_value`
-				);
+			if (aRes.status === 'fulfilled') {
+				const a = aRes.value;
 				const agg = new Map<string, { max: number; n: number }>();
 				for (const act of a.activities ?? []) {
 					const tid = act.target_chembl_id;
@@ -132,8 +141,6 @@ export function getTargets(inchikey: string | null, name: string, topN = 4): Pro
 						maxPchembl: v.max
 					});
 				}
-			} catch {
-				/* ignore */
 			}
 
 			// Rank, keep topN, then resolve human protein identity for those.

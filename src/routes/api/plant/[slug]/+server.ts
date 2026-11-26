@@ -1,13 +1,15 @@
 import { json, error } from '@sveltejs/kit';
-import { getPlantProfile } from '#lib/server/orchestrate';
+import { getPlantBase } from '#lib/server/orchestrate';
 import type { RequestHandler } from './$types';
 
+// The FAST half of a plant profile: identity, traditions, PubChem compounds and
+// literature. Returns in a few seconds so the page renders immediately; the heavy
+// target network streams in separately from /api/plant/[slug]/targets.
 export const GET: RequestHandler = async ({ params, setHeaders }) => {
-	const profile = await getPlantProfile(params.slug);
-	if (!profile) throw error(404, `Unknown plant: ${params.slug}`);
+	const base = await getPlantBase(params.slug);
+	if (!base) throw error(404, `Unknown plant: ${params.slug}`);
 	setHeaders({ 'cache-control': 'public, max-age=300' });
-	return json(profile);
+	return json(base);
 };
 
-// Allow the live cross-database fan-out enough time on Vercel.
 export const config = { maxDuration: 60 };
