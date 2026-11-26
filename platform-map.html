@@ -1,0 +1,340 @@
+<title>HERBENZO Platform Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* HERBENZO platform architecture. */
+  :root {
+    --ink: #060e0b; --ink-1: #0a1511; --ink-2: #0f1e18; --ink-3: #16271f;
+    --bone: #ece6d6; --bone-dim: #9ba79b; --bone-faint: #6b7a6e;
+    --jade: #30d89a; --jade-soft: rgba(48,216,154,.12); --jade-line: rgba(48,216,154,.4);
+    --brass: #c9a65b; --brass-soft: rgba(201,166,91,.1); --brass-line: rgba(201,166,91,.4);
+    --violet: #9a8cff;
+    --line: rgba(201,166,91,.16); --line-strong: rgba(201,166,91,.3);
+    --fd: 'Fraunces', Georgia, serif; --fs: 'Inter', system-ui, sans-serif; --fm: 'IBM Plex Mono', monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ink); color: var(--bone);
+    font-family: var(--fs); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(60rem 36rem at 50% -8%, rgba(48,216,154,.06), transparent 70%),
+                      radial-gradient(44rem 30rem at 100% 8%, rgba(201,166,91,.05), transparent 70%);
+  }
+  .wrap { max-width: 78rem; margin-inline: auto; padding-left: max(20px, env(safe-area-inset-left,0px)); padding-right: max(20px, env(safe-area-inset-right,0px)); }
+  .fd { font-family: var(--fd); font-weight: 340; letter-spacing: -.01em; }
+  .fm { font-family: var(--fm); }
+  .eyebrow { font-family: var(--fm); font-size: .66rem; letter-spacing: .24em; text-transform: uppercase; color: var(--brass); }
+  .muted { color: var(--bone-dim); }
+
+  header.top { text-align: center; padding-block: 3.4rem 1.6rem; }
+  header.top h1 { font-family: var(--fd); font-size: clamp(2rem, 4.5vw, 3.1rem); margin: .6rem 0 .5rem; line-height: 1.05; }
+  header.top h1 em { color: var(--jade); font-style: italic; }
+  header.top p { max-width: 42rem; margin: 0 auto; color: var(--bone-dim); font-size: .98rem; }
+
+  /* legend */
+  .legend { display: flex; gap: 1.2rem; justify-content: center; flex-wrap: wrap; margin-top: 1.4rem; font-size: .72rem; }
+  .legend span { display: inline-flex; align-items: center; gap: .45rem; color: var(--bone-dim); }
+  .sw { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+  .sw.built { background: var(--jade); }
+  .sw.next { background: transparent; border: 2px solid var(--jade); box-shadow: 0 0 8px var(--jade-soft); }
+  .sw.p2 { background: var(--brass); }
+  .sw.road { background: transparent; border: 2px solid var(--bone-faint); }
+
+  section { padding-block: 2.2rem; }
+  .shead { display: flex; align-items: baseline; gap: .8rem; margin-bottom: 1.4rem; }
+  .shead .n { font-family: var(--fd); font-size: 1.1rem; color: var(--brass); opacity: .6; }
+  .shead h2 { font-family: var(--fd); font-size: 1.35rem; margin: 0; font-weight: 400; }
+  .shead .hint { margin-left: auto; font-family: var(--fm); font-size: .64rem; color: var(--bone-faint); }
+
+  /* SPINE */
+  .spine { display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--ink-1); }
+  .stage { flex: 1; min-width: 0; padding: 1.1rem 1rem 1rem; position: relative; border-right: 1px solid var(--line); }
+  .stage:last-child { border-right: 0; }
+  .stage .ic { width: 30px; height: 30px; margin-bottom: .55rem; }
+  .stage .slab { font-family: var(--fm); font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; color: var(--bone-faint); }
+  .stage h3 { font-family: var(--fd); font-size: 1.12rem; margin: .1rem 0 .3rem; }
+  .stage p { font-size: .72rem; color: var(--bone-dim); margin: 0; line-height: 1.4; }
+  .stage .st { position: absolute; top: .8rem; right: .8rem; width: 9px; height: 9px; border-radius: 50%; }
+  .st.built { background: var(--jade); box-shadow: 0 0 10px var(--jade); }
+  .st.p2 { background: var(--brass); }
+  .st.road { background: transparent; border: 2px solid var(--bone-faint); }
+  .stage.built { background: linear-gradient(180deg, rgba(48,216,154,.06), transparent); }
+  .stage .arrow { position: absolute; right: -9px; top: 50%; transform: translateY(-50%); z-index: 3; color: var(--brass); font-size: .9rem; background: var(--ink); border-radius: 50%; }
+
+  /* capability grid */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .cap { border: 1px solid var(--line); border-radius: 4px; background: var(--ink-2); padding: 1.1rem; display: flex; flex-direction: column; gap: .6rem; position: relative; transition: border-color .2s; }
+  .cap.next { border-color: var(--jade-line); background: linear-gradient(180deg, rgba(48,216,154,.05), var(--ink-2)); box-shadow: 0 0 0 1px rgba(48,216,154,.1), 0 14px 34px -22px rgba(48,216,154,.5); }
+  .cap.built { border-color: var(--jade-line); background: linear-gradient(180deg, rgba(48,216,154,.07), var(--ink-2)); box-shadow: 0 0 0 1px rgba(48,216,154,.1); }
+  .cap.p2 { border-color: var(--brass-line); }
+  .cap .caphead { display: flex; align-items: center; gap: .6rem; }
+  .cap .ci { width: 26px; height: 26px; flex-shrink: 0; }
+  .cap .cno { font-family: var(--fm); font-size: .64rem; color: var(--brass); }
+  .cap h3 { font-family: var(--fd); font-size: 1.12rem; margin: 0; line-height: 1.1; flex: 1; }
+  .badge { font-family: var(--fm); font-size: .54rem; letter-spacing: .1em; text-transform: uppercase; padding: .25rem .5rem; border-radius: 999px; white-space: nowrap; align-self: flex-start; }
+  .badge.built { background: var(--jade); color: #04110b; }
+  .badge.next { color: var(--jade); border: 1px solid var(--jade-line); }
+  .badge.p2 { color: var(--brass); border: 1px solid var(--brass-line); }
+  .badge.road { color: var(--bone-faint); border: 1px solid var(--line-strong); }
+  .cap p { font-size: .8rem; color: var(--bone-dim); margin: 0; line-height: 1.45; }
+  .chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: auto; }
+  .chip { font-size: .62rem; padding: .18rem .45rem; border: 1px solid var(--line); border-radius: 3px; color: var(--bone-dim); }
+  .cap .src { font-family: var(--fm); font-size: .58rem; letter-spacing: .04em; color: var(--jade); text-transform: uppercase; }
+
+  /* backbone band */
+  .backbone { margin-top: 1rem; border: 1px dashed var(--line-strong); border-radius: 4px; padding: 1rem 1.2rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; background: repeating-linear-gradient(135deg, transparent, transparent 10px, rgba(201,166,91,.02) 10px, rgba(201,166,91,.02) 20px); }
+  .backbone .bl { font-family: var(--fm); font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
+  .backbone .bitems { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+  /* foundation */
+  .foundation { border-top: 1px solid var(--line); }
+  .srcs { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .srcpill { font-family: var(--fm); font-size: .68rem; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 999px; color: var(--bone-dim); }
+  .srcpill b { color: var(--jade); font-weight: 500; }
+
+  /* phases */
+  .phases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .phase { border: 1px solid var(--line); border-radius: 4px; padding: 1.1rem; }
+  .phase.now { border-color: var(--jade-line); }
+  .phase .pt { font-family: var(--fm); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; }
+  .phase.now .pt { color: var(--jade); }
+  .phase h3 { font-family: var(--fd); font-size: 1.15rem; margin: .3rem 0 .4rem; }
+  .phase p { font-size: .78rem; color: var(--bone-dim); margin: 0; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 2rem; padding-block: 1.6rem 2.4rem; text-align: center; }
+  footer span { font-family: var(--fm); font-size: .64rem; color: var(--bone-faint); }
+
+  @media (max-width: 860px) {
+    .grid, .phases { grid-template-columns: 1fr 1fr; }
+    .spine { flex-wrap: wrap; }
+    .stage { flex: 1 1 45%; border-right: 0; border-bottom: 1px solid var(--line); }
+    .stage .arrow { display: none; }
+  }
+  @media (max-width: 560px) {
+    .grid, .phases { grid-template-columns: 1fr; }
+    .stage { flex: 1 1 100%; }
+  }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow">HERBENZO · Platform Architecture</div>
+    <h1 class="fd">Engineering products from <em>traditional medicine</em></h1>
+    <p>From an herb to a standardized, evidence-backed product — the capability map. The discovery spine is live today; each surrounding layer turns a molecule into something you can formulate, validate and sell.</p>
+    <div class="legend">
+      <span><i class="sw built"></i> Built · Phase 1</span>
+      <span><i class="sw next"></i> Next priority</span>
+      <span><i class="sw p2"></i> Phase 2</span>
+      <span><i class="sw road"></i> Roadmap</span>
+    </div>
+  </div>
+</header>
+
+<!-- SPINE -->
+<section class="wrap">
+  <div class="shead">
+    <span class="n fd">◆</span>
+    <h2 class="fd">The spine — plant to product</h2>
+    <span class="hint">live today ▸ formulation ▸ product</span>
+  </div>
+  <div class="spine">
+    <div class="stage built">
+      <span class="st built"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><path d="M12 20c0-5 2-7 6-9-4 0-7 1.5-9 5-2-3.5-5-5-9-5 4 2 6 4 6 9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="6" r="1.6" fill="var(--brass)" stroke="none"/></svg>
+      <div class="slab">01 · Herb</div>
+      <h3 class="fd">Plant</h3>
+      <p>Species + traditional use across Ayurveda, TCM, Western</p>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="stage built">
+      <span class="st built"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><circle cx="7" cy="8" r="2.2"/><circle cx="17" cy="7" r="2.2"/><circle cx="12" cy="16" r="2.2"/><path d="M9 9l6-1M8.5 10l3 4M15 9l-2 5"/></svg>
+      <div class="slab">02 · API</div>
+      <h3 class="fd">Active</h3>
+      <p>Bioactive compound, structure & drug-likeness (QED)</p>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="stage built">
+      <span class="st built"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><path d="M6 6c4 2 8 2 12 0M6 12h12M6 18c4-2 8-2 12 0" stroke-linecap="round"/><circle cx="6" cy="6" r="1.6" fill="var(--jade)" stroke="none"/><circle cx="18" cy="18" r="1.6" fill="var(--jade)" stroke="none"/></svg>
+      <div class="slab">03 · Protein</div>
+      <h3 class="fd">Target</h3>
+      <p>Binding evidence, gene & 3D fold</p>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="stage built">
+      <span class="st built"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><path d="M12 21s-7-4.5-9-9a4.5 4.5 0 018-2.5A4.5 4.5 0 0121 12c-2 4.5-9 9-9 9z" stroke-linejoin="round"/></svg>
+      <div class="slab">04 · Indication</div>
+      <h3 class="fd">Disease</h3>
+      <p>Target–disease links & literature evidence</p>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="stage built">
+      <span class="st built"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--brass)" stroke-width="1.5"><path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3" stroke-linejoin="round"/><path d="M7.5 15h9"/></svg>
+      <div class="slab">05 · API + excipient</div>
+      <h3 class="fd">Formulation</h3>
+      <p>Functional pairing to beat existing preparations</p>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="stage">
+      <span class="st road"></span>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="var(--bone-dim)" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+      <div class="slab">06 · Market</div>
+      <h3 class="fd">Product</h3>
+      <p>Standardized, safe, regulatory-cleared</p>
+    </div>
+  </div>
+</section>
+
+<!-- CAPABILITY LAYERS -->
+<section class="wrap">
+  <div class="shead">
+    <span class="n fd">◆</span>
+    <h2 class="fd">The capability layers</h2>
+    <span class="hint">what turns a hit into a product</span>
+  </div>
+  <div class="grid">
+
+    <div class="cap built">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M16 16l4 4" stroke-linecap="round"/><path d="M8 11h6M11 8v6" stroke-linecap="round"/></svg>
+        <span class="cno">L1</span><h3 class="fd">Reverse &amp; Convergence Search</h3>
+      </div>
+      <span class="badge built">Built ✓</span>
+      <p>Query target-, disease- or compound-first. A cross-tradition engine that surfaces herbs used for the same indication across systems — convergence as signal.</p>
+      <div class="chips"><span class="chip">target → herb</span><span class="chip">disease → herb</span><span class="chip">convergence</span></div>
+      <span class="src">ChEMBL · Open Targets · LOTUS</span>
+    </div>
+
+    <div class="cap built">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><path d="M4 7h16M6 7v10a3 3 0 003 3h6a3 3 0 003-3V7" /><path d="M9 11h6M9 15h4"/></svg>
+        <span class="cno">L2</span><h3 class="fd">Developability — ADMET / BCS</h3>
+      </div>
+      <span class="badge built">Built ✓</span>
+      <p>The gate from "active" to "product": solubility, permeability, CYP/UGT liability, toxicity, BCS class, metabolites and stability — why herbal actives fail, diagnosed.</p>
+      <div class="chips"><span class="chip">ADMET</span><span class="chip">BCS class</span><span class="chip">bioavailability</span></div>
+      <span class="src">RDKit · ADMET models · PubChem</span>
+    </div>
+
+    <div class="cap built">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="17" r="2"/><path d="M8 7l8 .5M7 8l9 8M8 17l8-9M9 18l6-1"/></svg>
+        <span class="cno">L3</span><h3 class="fd">Network Pharmacology &amp; Synergy</h3>
+      </div>
+      <span class="badge built">Built ✓</span>
+      <p>Model the mixture, not the molecule: pathway enrichment, disease-module coverage, multi-target and herb–herb synergy — the scientific heart of traditional formulas.</p>
+      <div class="chips"><span class="chip">pathways</span><span class="chip">synergy</span><span class="chip">multi-herb</span></div>
+      <span class="src">Reactome · KEGG · ChEMBL</span>
+    </div>
+
+    <div class="cap built">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--jade)" stroke-width="1.5"><path d="M9 3h6M10 3v5l-4 9a2 2 0 002 3h8a2 2 0 002-3l-4-9V3" stroke-linejoin="round"/></svg>
+        <span class="cno">L7</span><h3 class="fd">Formulation Engine</h3>
+      </div>
+      <span class="badge built">Phase 2 ✓</span>
+      <p>Correlate each API with functional excipients — solubilizers, permeation enhancers, metabolism inhibitors, delivery systems — to engineer formulations that outperform the traditional preparation.</p>
+      <div class="chips"><span class="chip">excipient match</span><span class="chip">delivery</span><span class="chip">vs. baseline</span></div>
+      <span class="src">FDA IID · RDKit · literature</span>
+    </div>
+
+    <div class="cap road">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--bone-dim)" stroke-width="1.5"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" stroke-linejoin="round"/><path d="M9.5 12l2 2 3.5-4"/></svg>
+        <span class="cno">L4</span><h3 class="fd">Safety &amp; Interactions</h3>
+      </div>
+      <span class="badge road">Roadmap</span>
+      <p>The product gate: herb–drug interactions (CYP/UGT/P-gp), toxic constituents, contraindications and exposure limits. Non-negotiable for anything sold.</p>
+      <div class="chips"><span class="chip">herb–drug</span><span class="chip">tox</span><span class="chip">ADI / NOAEL</span></div>
+      <span class="src">CYP data · tox alerts · curated</span>
+    </div>
+
+    <div class="cap road">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--bone-dim)" stroke-width="1.5"><path d="M10 3h4v4l4 11a2 2 0 01-2 3H8a2 2 0 01-2-3l4-11z" stroke-linejoin="round"/><path d="M8 14h8"/></svg>
+        <span class="cno">L5</span><h3 class="fd">Quality &amp; Standardization</h3>
+      </div>
+      <span class="badge road">Roadmap</span>
+      <p>Same species ≠ same chemistry. Chemotype, origin, plant part and extraction variability, marker compounds for QC, and authentication — the botanical moat.</p>
+      <div class="chips"><span class="chip">chemotype</span><span class="chip">markers</span><span class="chip">authentication</span></div>
+      <span class="src">curated · analytical data</span>
+    </div>
+
+    <div class="cap road">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--bone-dim)" stroke-width="1.5"><path d="M12 4v15M5 8l7-4 7 4M5 8v2l2 5H3l2-5M19 8v2l2 5h-4l2-5" stroke-linejoin="round"/></svg>
+        <span class="cno">L6</span><h3 class="fd">Evidence &amp; Regulatory</h3>
+      </div>
+      <span class="badge road">Roadmap</span>
+      <p>What you can legally claim: clinical-trial evidence, evidence grading, regulatory-pathway mapping, authoritative monographs, and IP / prior-art (traditional knowledge).</p>
+      <div class="chips"><span class="chip">trials</span><span class="chip">pathway</span><span class="chip">monographs</span></div>
+      <span class="src">ClinicalTrials.gov · WHO / EMA / USP</span>
+    </div>
+
+    <div class="cap road">
+      <div class="caphead">
+        <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="var(--bone-dim)" stroke-width="1.5"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M7 6l4 5M17 6l-4 5M11 13l-4 4M13 13l4 4"/></svg>
+        <span class="cno">L8</span><h3 class="fd">Knowledge Graph · ML · Workspace</h3>
+      </div>
+      <span class="badge road">Roadmap</span>
+      <p>The backbone: one graph linking plant–compound–target–pathway–disease–formulation–evidence, ML to fill gaps and recommend, and a workspace to build & export.</p>
+      <div class="chips"><span class="chip">graph</span><span class="chip">ML predict</span><span class="chip">provenance</span></div>
+      <span class="src">cross-cutting</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- FOUNDATION -->
+<section class="wrap foundation">
+  <div class="shead">
+    <span class="n fd">◆</span>
+    <h2 class="fd">Open-data foundation</h2>
+    <span class="hint">live, licensed, traceable</span>
+  </div>
+  <div class="srcs">
+    <span class="srcpill"><b>PubChem</b> · compounds</span>
+    <span class="srcpill"><b>ChEMBL</b> · bioactivity</span>
+    <span class="srcpill"><b>UniProt</b> · proteins</span>
+    <span class="srcpill"><b>Open Targets</b> · disease</span>
+    <span class="srcpill"><b>LOTUS</b> · occurrence</span>
+    <span class="srcpill"><b>AlphaFold</b> · structure</span>
+    <span class="srcpill"><b>PubMed</b> · literature</span>
+    <span class="srcpill"><b>RDKit</b> · cheminformatics</span>
+    <span class="srcpill muted">+ Reactome · ClinicalTrials.gov · FDA IID …</span>
+  </div>
+</section>
+
+<!-- PHASES -->
+<section class="wrap">
+  <div class="shead">
+    <span class="n fd">◆</span>
+    <h2 class="fd">The arc</h2>
+  </div>
+  <div class="phases">
+    <div class="phase now">
+      <div class="pt">Phase 1 · now</div>
+      <h3 class="fd">Discovery</h3>
+      <p>Plant → active → target → disease, live on open data with real cheminformatics. Built.</p>
+    </div>
+    <div class="phase">
+      <div class="pt muted">Phase 2</div>
+      <h3 class="fd">Design</h3>
+      <p>Developability, synergy and the formulation engine — turning hits into optimized products.</p>
+    </div>
+    <div class="phase">
+      <div class="pt muted">Phase 3</div>
+      <h3 class="fd">Product</h3>
+      <p>Safety, standardization, evidence & regulatory — what makes it sellable and defensible.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap"><span>HERBENZO — platform capability map · discovery live, design &amp; product on the roadmap</span></div>
+</footer>
