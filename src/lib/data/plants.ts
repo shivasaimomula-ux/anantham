@@ -10,7 +10,7 @@
 // chemical APIs) and are intentionally high level.
 
 export type Tradition = {
-	system: 'Ayurveda' | 'TCM' | 'Western' | 'Unani';
+	system: 'Ayurveda' | 'TCM' | 'Western' | 'Unani' | 'Siddha';
 	uses: string[];
 	note?: string;
 };
@@ -51,6 +51,39 @@ export const PLANTS: Plant[] = [
 			{ name: 'demethoxycurcumin', cid: 5469424 },
 			{ name: 'bisdemethoxycurcumin', cid: 5315472 },
 			{ name: 'ar-turmerone' }
+		]
+	},
+	{
+		slug: 'white-turmeric',
+		common: 'White Turmeric (Kasturi Manjal)',
+		scientific: 'Curcuma aromatica',
+		family: 'Zingiberaceae',
+		taxon: { rank: 'species', ncbi: 136220 },
+		blurb: 'Aromatic "wild" turmeric valued as a non-staining, skin-brightening rhizome — curcuminoids layered over a rich sesquiterpene essential oil; the classic de-tan botanical of South-Asian skincare.',
+		traditions: [
+			{
+				system: 'Ayurveda',
+				uses: ['varnya (complexion)', 'skin brightening', 'blemishes & dark marks', 'ubtan skin pastes'],
+				note: 'Vana Haridra / Aranya Haridra — the cosmetic turmeric'
+			},
+			{
+				system: 'Siddha',
+				uses: ['de-tanning face packs', 'facial radiance', 'even skin tone', 'bridal "Kasturi Manjal"'],
+				note: 'Non-staining — unlike culinary C. longa'
+			},
+			{
+				system: 'Western',
+				uses: ['tyrosinase-inhibitory brightening', 'antioxidant topical', 'anti-inflammatory', 'photo-protection'],
+				note: 'Cosmetic dermatology literature'
+			}
+		],
+		compounds: [
+			{ name: 'curcumin', cid: 969516 },
+			{ name: 'demethoxycurcumin', cid: 5469424 },
+			{ name: 'bisdemethoxycurcumin', cid: 5315472 },
+			{ name: 'xanthorrhizol', cid: 93135 },
+			{ name: 'germacrone', cid: 6436348 },
+			{ name: 'curdione', cid: 14106072 }
 		]
 	},
 	{

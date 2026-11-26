@@ -145,7 +145,8 @@
 		Ayurveda: 'var(--jade)',
 		TCM: 'var(--brass)',
 		Western: 'var(--violet)',
-		Unani: 'var(--warn)'
+		Unani: 'var(--warn)',
+		Siddha: 'var(--good)'
 	};
 </script>
 
