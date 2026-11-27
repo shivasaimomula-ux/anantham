@@ -101,6 +101,20 @@ create table if not exists ingest_run (
   started_at timestamptz default now(),
   finished_at timestamptz
 );
+create table if not exists formulation (
+  id serial primary key,
+  goal_id text not null,
+  goal_label text,
+  taxon_slug text not null,
+  species_label text,
+  lead text,
+  route text,
+  exposure_index double precision,
+  coverage double precision,
+  complementarity double precision,
+  plan jsonb,
+  created_at timestamptz default now()
+);
 `;
 
 export async function migrate(): Promise<void> {
@@ -345,6 +359,33 @@ export async function logRun(slug: string, status: string, note: string, targets
 		await sql`insert into ingest_run (slug, status, note, targets, finished_at) values (${slug}, ${status}, ${note}, ${targets}, now())`;
 	} catch {
 		/* best effort */
+	}
+}
+
+// ── Saved formulations (Phase 4: save / compare / version) ────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function saveFormulation(rec: { goalId: string; goalLabel: string; slug: string; speciesLabel: string; lead: string | null; route: string; exposureIndex: number; coverage: number; complementarity: number; plan: any }): Promise<number | null> {
+	const sql = db();
+	if (!sql) return null;
+	await migrate();
+	const [row] = await sql`
+		insert into formulation (goal_id, goal_label, taxon_slug, species_label, lead, route, exposure_index, coverage, complementarity, plan)
+		values (${rec.goalId}, ${rec.goalLabel}, ${rec.slug}, ${rec.speciesLabel}, ${rec.lead}, ${rec.route}, ${rec.exposureIndex}, ${rec.coverage}, ${rec.complementarity}, ${sql.json(rec.plan)})
+		returning id`;
+	return Number(row.id);
+}
+
+export async function listFormulations(goalId?: string, slug?: string): Promise<Record<string, unknown>[]> {
+	const sql = db();
+	if (!sql) return [];
+	try {
+		const rows =
+			goalId && slug
+				? await sql`select id, goal_id, goal_label, taxon_slug, species_label, lead, route, exposure_index, coverage, complementarity, created_at from formulation where goal_id = ${goalId} and taxon_slug = ${slug} order by created_at desc limit 20`
+				: await sql`select id, goal_id, goal_label, taxon_slug, species_label, lead, route, exposure_index, coverage, complementarity, created_at from formulation order by created_at desc limit 20`;
+		return rows;
+	} catch {
+		return [];
 	}
 }
 

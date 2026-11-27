@@ -57,16 +57,52 @@
 		open = false;
 	}
 
+	let saveState = $state<'idle' | 'saving' | 'saved' | 'error' | 'nostore'>('idle');
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let saved = $state<any[]>([]);
+
 	async function generate() {
 		status = 'loading';
 		dossier = null;
+		saveState = 'idle';
 		try {
 			const r = await fetch(`/api/dossier?goal=${goalId}&species=${encodeURIComponent(speciesSlug)}`);
 			if (!r.ok) throw new Error('failed');
 			dossier = await r.json();
 			status = 'ready';
+			loadSaved();
 		} catch {
 			status = 'error';
+		}
+	}
+
+	async function saveDossier() {
+		if (!dossier) return;
+		saveState = 'saving';
+		try {
+			const r = await fetch('/api/formulation', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ goal: dossier.goal, species: dossier.species, formulation: dossier.formulation })
+			});
+			if (r.status === 503) {
+				saveState = 'nostore';
+				return;
+			}
+			if (!r.ok) throw new Error();
+			saveState = 'saved';
+			loadSaved();
+		} catch {
+			saveState = 'error';
+		}
+	}
+
+	async function loadSaved() {
+		try {
+			const r = await fetch(`/api/formulation?goal=${goalId}&species=${encodeURIComponent(speciesSlug)}`);
+			saved = (await r.json()).items ?? [];
+		} catch {
+			saved = [];
 		}
 	}
 
@@ -240,16 +276,53 @@
 
 		<!-- FORMULATION -->
 		<section class="sec">
-			<h3 class="shead display"><span class="sn">04</span> Formulation ({dossier.formulation.route})</h3>
-			<div class="form">
-				<div class="fcol">
-					<div class="fh mono">Deficiencies to fix</div>
-					<ul>{#each dossier.formulation.deficiencies as d}<li>{d}</li>{/each}</ul>
+			<h3 class="shead display"><span class="sn">04</span> Formulation engine ({dossier.formulation.route})</h3>
+			<div class="fhead">
+				<div class="fexp">
+					<div class="fexpn tnum">~{dossier.formulation.exposureIndex}×</div>
+					<div class="fexpl mono">est. exposure uplift vs raw extract</div>
+					<div class="fexpb mono">{dossier.formulation.exposureBasis}</div>
 				</div>
-				<div class="fcol">
-					<div class="fh mono">Excipient strategy</div>
-					<ul>{#each dossier.formulation.excipients as e}<li>{e}</li>{/each}</ul>
+				<div class="fcomp">
+					<div class="fh mono">Multi-active complementarity · {Math.round(dossier.formulation.complementarity.score * 100)}%</div>
+					<div class="fcov mono">{dossier.formulation.complementarity.distinctTargets}/{dossier.formulation.complementarity.totalTargets} goal targets engaged by measured actives</div>
+					<div class="fcl">
+						{#each dossier.formulation.complementarity.actives as a}
+							<div class="fci"><span class="fcname">{a.name}</span> <span class="fctg mono">{a.covers.join(' · ')}</span></div>
+						{/each}
+					</div>
+					<p class="fcn mono">{dossier.formulation.complementarity.note}</p>
 				</div>
+			</div>
+
+			<div class="fh mono fdh">Diagnosed deficiencies of the lead active</div>
+			<div class="defs">
+				{#each dossier.formulation.deficiencies as d}
+					<div class="def">
+						<div class="deft"><b>{d.label}</b><span class="defbar"><i style="width:{Math.round(d.severity * 100)}%"></i></span></div>
+						<div class="defr mono">{d.reason}</div>
+					</div>
+				{/each}
+				{#if !dossier.formulation.deficiencies.length}<p class="muted">Lead active is already well-behaved — limited formulation upside.</p>{/if}
+			</div>
+
+			<div class="fh mono fdh">Matched excipients · live regulatory + literature precedent</div>
+			<div class="excs">
+				{#each dossier.formulation.excipients as e}
+					<div class="exc">
+						<div class="exct">
+							<span class="excn">{e.name}</span>
+							<span class="exccl mono">{e.class}</span>
+						</div>
+						<div class="excm">{e.mechanism}</div>
+						<div class="excb">
+							{#each e.addresses as a}<span class="excd mono">{a}</span>{/each}
+							{#if e.fdaProducts != null}<span class="excf mono">openFDA: {e.fdaProducts.toLocaleString()} products</span>{/if}
+							{#if e.evidence != null}<span class="excp mono">PubMed: {e.evidence.toLocaleString()}</span>{/if}
+						</div>
+						{#if e.precedent}<div class="excpr mono">precedent · {e.precedent}</div>{/if}
+					</div>
+				{/each}
 			</div>
 			<p class="frat">{dossier.formulation.rationale}</p>
 		</section>
@@ -262,6 +335,34 @@
 			</div>
 			<ul class="cav">{#each dossier.caveats as c}<li>{c}</li>{/each}</ul>
 			<p class="prov mono">Generated {new Date(dossier.generatedAt).toISOString().slice(0, 16).replace('T', ' ')} · live from LOTUS · PubChem · ChEMBL · UniProt · PubMed. Every value traces to an open record.</p>
+		</section>
+
+		<!-- SAVE & COMPARE -->
+		<section class="sec">
+			<h3 class="shead display"><span class="sn">06</span> Save &amp; compare</h3>
+			<div class="saverow">
+				<button class="btn-solid" onclick={saveDossier} disabled={saveState === 'saving'}>
+					{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : 'Save this formulation'}
+				</button>
+				{#if saveState === 'nostore'}<span class="savenote mono">No store configured (set DATABASE_URL) — dossiers still generate live, but can't be saved.</span>{/if}
+				{#if saveState === 'error'}<span class="savenote mono err">Save failed — try again.</span>{/if}
+			</div>
+			{#if saved.length}
+				<div class="cmp">
+					<div class="cmprow cmphead mono"><span>Species</span><span>Lead</span><span>Route</span><span>Exposure</span><span>Complementarity</span><span>Saved</span></div>
+					{#each saved as s}
+						<div class="cmprow">
+							<span class="cmpsp">{s.species_label}</span>
+							<span>{s.lead ?? '—'}</span>
+							<span class="mono">{s.route}</span>
+							<span class="mono cmpx">~{s.exposure_index}×</span>
+							<span class="mono">{Math.round((s.complementarity ?? 0) * 100)}%</span>
+							<span class="mono cmpd">{new Date(s.created_at).toISOString().slice(0, 10)}</span>
+						</div>
+					{/each}
+				</div>
+				<p class="scap">Saved formulations for this goal + plant — compare exposure and complementarity across versions.</p>
+			{/if}
 		</section>
 	</div>
 {:else}
@@ -739,6 +840,172 @@
 		border-left: 2px solid var(--jade);
 		padding-left: 0.8rem;
 	}
+	.fhead {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 1.5rem;
+		align-items: stretch;
+		margin-bottom: 1.6rem;
+	}
+	.fexp {
+		border: 1px solid var(--jade-line);
+		background: var(--jade-soft);
+		border-radius: var(--radius);
+		padding: 1.1rem 1.3rem;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		min-width: 11rem;
+	}
+	.fexpn {
+		font-family: var(--font-display);
+		font-size: 2.6rem;
+		line-height: 1;
+		color: var(--jade);
+	}
+	.fexpl {
+		font-size: 0.62rem;
+		color: var(--bone-dim);
+		margin-top: 0.3rem;
+	}
+	.fexpb {
+		font-size: 0.58rem;
+		color: var(--brass);
+		margin-top: 0.25rem;
+	}
+	.fcomp {
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: 1rem 1.2rem;
+	}
+	.fcov {
+		font-size: 0.68rem;
+		color: var(--bone);
+		margin: 0.3rem 0 0.6rem;
+	}
+	.fcl {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.fci {
+		display: flex;
+		gap: 0.6rem;
+		align-items: baseline;
+		font-size: 0.74rem;
+	}
+	.fcname {
+		color: var(--bone);
+		min-width: 9rem;
+	}
+	.fctg {
+		font-size: 0.6rem;
+		color: var(--jade);
+	}
+	.fcn {
+		font-size: 0.64rem;
+		color: var(--bone-dim);
+		margin: 0.6rem 0 0;
+		line-height: 1.45;
+	}
+	.fdh {
+		margin: 1.2rem 0 0.6rem;
+	}
+	.defs {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.def {
+		border-bottom: 1px solid var(--line);
+		padding-bottom: 0.55rem;
+	}
+	.deft {
+		display: flex;
+		align-items: center;
+		gap: 0.8rem;
+		font-size: 0.84rem;
+		color: var(--bone);
+	}
+	.defbar {
+		flex: 1;
+		max-width: 10rem;
+		height: 4px;
+		background: var(--ink-3);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.defbar i {
+		display: block;
+		height: 100%;
+		background: var(--warn);
+	}
+	.defr {
+		font-size: 0.66rem;
+		color: var(--bone-dim);
+		margin-top: 0.25rem;
+	}
+	.excs {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 0.9rem;
+	}
+	.exc {
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: 0.9rem;
+		background: var(--ink-2);
+	}
+	.exct {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+	.excn {
+		font-size: 0.86rem;
+		color: var(--bone);
+		font-weight: 500;
+	}
+	.exccl {
+		font-size: 0.56rem;
+		text-transform: uppercase;
+		color: var(--brass);
+		margin-left: auto;
+	}
+	.excm {
+		font-size: 0.72rem;
+		color: var(--bone-dim);
+		margin: 0.4rem 0 0.5rem;
+		line-height: 1.45;
+	}
+	.excb {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		align-items: center;
+	}
+	.excd {
+		font-size: 0.54rem;
+		text-transform: uppercase;
+		border: 1px solid var(--line);
+		border-radius: 3px;
+		padding: 0.1rem 0.35rem;
+		color: var(--bone-dim);
+	}
+	.excf {
+		font-size: 0.56rem;
+		color: var(--good);
+	}
+	.excp {
+		font-size: 0.56rem;
+		color: var(--jade);
+	}
+	.excpr {
+		font-size: 0.6rem;
+		color: var(--bone-faint);
+		margin-top: 0.5rem;
+		font-style: italic;
+	}
 
 	.lits {
 		display: flex;
@@ -768,6 +1035,53 @@
 		margin-top: 1.2rem;
 		font-size: 0.6rem;
 		color: var(--bone-faint);
+	}
+	.saverow {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.savenote {
+		font-size: 0.66rem;
+		color: var(--bone-dim);
+	}
+	.savenote.err {
+		color: var(--crit);
+	}
+	.cmp {
+		margin-top: 1.2rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+	.cmprow {
+		display: grid;
+		grid-template-columns: 2fr 1.2fr 0.7fr 0.8fr 1fr 0.9fr;
+		gap: 0.7rem;
+		padding: 0.6rem 1rem;
+		border-bottom: 1px solid var(--line);
+		align-items: center;
+		font-size: 0.76rem;
+		color: var(--bone);
+	}
+	.cmphead {
+		background: var(--ink-1);
+		font-size: 0.56rem;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: var(--brass);
+	}
+	.cmpsp {
+		font-style: italic;
+		color: var(--bone);
+	}
+	.cmpx {
+		color: var(--jade);
+	}
+	.cmpd {
+		color: var(--bone-faint);
+		font-size: 0.66rem;
 	}
 
 	@media (max-width: 820px) {

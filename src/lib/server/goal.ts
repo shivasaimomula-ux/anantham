@@ -8,6 +8,7 @@ import { getCompound } from './sources/pubchem';
 import { directedActivity, type DirectedHit } from './sources/chembl';
 import { getProteinByAccession } from './sources/uniprot';
 import { coMentionCount } from './sources/pubmed';
+import { designFormulation, type FormulationPlan } from './formulate';
 import { getGoal, type Goal } from '#lib/data/goals';
 
 export type TargetHit = {
@@ -27,6 +28,7 @@ export type ActiveScore = {
 	chemblId: string | null;
 	inchikey: string | null;
 	smiles: string | null;
+	formula: string | null;
 	mw: number | null;
 	xlogp: number | null;
 	tpsa: number | null;
@@ -55,7 +57,7 @@ export type Dossier = {
 	lead: ActiveScore | null;
 	reasoning: ReasonStep[];
 	targets: { acc: string; gene: string; role: string; evidence: string; name: string | null; functionNote: string | null }[];
-	formulation: { route: string; deficiencies: string[]; excipients: string[]; rationale: string };
+	formulation: FormulationPlan;
 	literature: { term: string; count: number }[];
 	caveats: string[];
 	notes: string[];
@@ -112,6 +114,7 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 				chemblId: null,
 				inchikey: r.pub.inchikey,
 				smiles: r.pub.smiles,
+				formula: r.pub.formula,
 				mw: r.pub.mw,
 				xlogp: r.pub.xlogp,
 				tpsa: r.pub.tpsa,
@@ -140,7 +143,7 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 	);
 
 	const reasoning = lead ? buildReasoning(goal, plant, lead, targets) : [];
-	const formulation = formulate(goal, lead);
+	const formulation = await designFormulation(goal, actives);
 
 	return {
 		goal: { id: goal.id, label: goal.label, claimClass: goal.claimClass, route: goal.route, intent: goal.intent, summary: goal.summary, moa: goal.moa, caveats: goal.caveats },
@@ -229,25 +232,6 @@ function buildReasoning(goal: Goal, plant: Awaited<ReturnType<typeof resolvePlan
 	});
 
 	return steps;
-}
-
-// ── Route-aware formulation summary (Phase 2 engine, condensed) ────────────────
-function formulate(goal: Goal, lead: ActiveScore | null): Dossier['formulation'] {
-	if (goal.route === 'topical') {
-		const def: string[] = ['Low aqueous solubility', 'Photo-instability under UV/light', 'Formulate at skin-matched acidic pH (~5) for stability'];
-		return {
-			route: 'topical',
-			deficiencies: def,
-			excipients: ['Phospholipid phytosome / liposome encapsulation (solubility + skin deposition + photo-protection)', 'Antioxidant co-system (vitamin C/E or the plant essential-oil fraction)', 'Clay + humectant vehicle; essential-oil fraction as penetration enhancer'],
-			rationale: `${lead?.name ?? 'The lead active'} is delivered as an encapsulated complex so it survives light and reaches the epidermis — the topical uplift is in skin deposition and photostability, not oral AUC.`
-		};
-	}
-	return {
-		route: 'oral',
-		deficiencies: ['Low oral bioavailability / rapid first-pass metabolism', 'Low aqueous solubility'],
-		excipients: ['Phospholipid phytosome (absorption)', 'Piperine / bioenhancer (slows first-pass glucuronidation)', 'Lipid-based or micellar delivery for solubility'],
-		rationale: `${lead?.name ?? 'The lead active'} is paired with a bioenhancer + lipid carrier to raise systemic exposure — the oral uplift is in AUC.`
-	};
 }
 
 function leadLine(name: string, hits: TargetHit[], rf: number, lit: number, goal: Goal): string {
