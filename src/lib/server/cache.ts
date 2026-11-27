@@ -1,5 +1,6 @@
 // Tiny in-memory TTL cache + in-flight de-duplication + a concurrency limiter.
 // Keeps repeated external API calls cheap and polite within a single server instance.
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 type Entry<T> = { value: T; expires: number };
 const store = new Map<string, Entry<unknown>>();
@@ -9,7 +10,27 @@ const inflight = new Map<string, Promise<unknown>>();
 // entries can never be served against new code (the staleness class of bug).
 const CACHE_VERSION = 'v3';
 
+// ── Request-scoped context ────────────────────────────────────────────────────
+// Carries per-request flags WITHOUT threading them through every function signature.
+//   sandbox  — clean-room mode: ignore human-seeded catalogue entries; resolve live.
+//   noCache  — never read OR write the cache (force a fresh derivation this request).
+// Both are consulted implicitly by cached() and resolvePlant(), so a single wrap at
+// the request boundary flips the whole pipeline into clean-room behaviour.
+export type RequestContext = { sandbox?: boolean; noCache?: boolean };
+const als = new AsyncLocalStorage<RequestContext>();
+
+export function withRequestContext<T>(ctx: RequestContext, fn: () => T): T {
+	return als.run(ctx, fn);
+}
+export function getRequestContext(): RequestContext | undefined {
+	return als.getStore();
+}
+
 export async function cached<T>(rawKey: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+	// Clean-room: no read, no write, no in-flight sharing — every value is derived
+	// fresh this request so a cached prior can never masquerade as a live finding.
+	if (als.getStore()?.noCache) return fn();
+
 	const key = `${CACHE_VERSION}:${rawKey}`;
 	const hit = store.get(key) as Entry<T> | undefined;
 	const now = Date.now();

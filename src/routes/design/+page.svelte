@@ -9,6 +9,9 @@
 	let goalId = $state('de-tan');
 	let speciesSlug = $state('white-turmeric');
 	let speciesLabel = $state('White Turmeric (Curcuma aromatica)');
+	// Clean-room mode: strip human-seeded catalogue + cache so the monograph is
+	// derived purely live (the goal stays, walled off as an a-priori hypothesis).
+	let sandbox = $state(false);
 
 	// species search
 	let q = $state('');
@@ -66,7 +69,7 @@
 		dossier = null;
 		saveState = 'idle';
 		try {
-			const r = await fetch(`/api/dossier?goal=${goalId}&species=${encodeURIComponent(speciesSlug)}`);
+			const r = await fetch(`/api/dossier?goal=${goalId}&species=${encodeURIComponent(speciesSlug)}${sandbox ? '&mode=sandbox' : ''}`);
 			if (!r.ok) throw new Error('failed');
 			dossier = await r.json();
 			status = 'ready';
@@ -176,9 +179,15 @@
 				{/each}
 			</div>
 		</div>
-		<button class="gen btn-solid" onclick={generate} disabled={status === 'loading'}>
-			{status === 'loading' ? 'Measuring…' : 'Generate dossier'}
-		</button>
+		<div class="genrow">
+			<button class="gen btn-solid" onclick={generate} disabled={status === 'loading'}>
+				{status === 'loading' ? 'Measuring…' : 'Generate dossier'}
+			</button>
+			<label class="sbx mono" class:on={sandbox} title="Strip human-seeded compound lists and cache; derive everything live from LOTUS. The goal stays as a labelled hypothesis.">
+				<input type="checkbox" bind:checked={sandbox} />
+				Sandbox (clean-room) — no seeding, no cache
+			</label>
+		</div>
 	</div>
 	{#if goal}<div class="wrap intent mono">{goal.intent}</div>{/if}
 </div>
@@ -204,6 +213,26 @@
 				</div>
 			{/if}
 		</div>
+
+		{#if dossier.provenance}
+			<div class="provbar {dossier.provenance.mode}">
+				<div class="pbhead mono">
+					<span class="pbmode">{dossier.provenance.mode === 'sandbox' ? '🧪 Sandbox — clean-room' : '🎬 Demo'}</span>
+					<span class="pbdot">·</span>compounds: <b>{dossier.provenance.compoundSource === 'lotus-live' ? 'live LOTUS' : 'seeded catalogue'}</b>
+					<span class="pbdot">·</span>{dossier.provenance.freshness === 'live-fresh' ? 'fresh (cache off)' : 'may be cached'}
+				</div>
+				<p class="pbnote mono">{dossier.provenance.note}</p>
+				<div class="pblegend">
+					<span class="ptag live">molecular identity · live</span>
+					<span class="ptag live">measured binding · live</span>
+					<span class="ptag live">literature · live</span>
+					<span class="ptag hyp">target bundle · hypothesis</span>
+					<span class="ptag hyp">mechanism · hypothesis</span>
+					<span class="ptag kb">excipients · curated KB</span>
+					<span class="ptag heur">exposure index · heuristic</span>
+				</div>
+			</div>
+		{/if}
 
 		{#if dossier.notes?.length}
 			{#each dossier.notes as n}<p class="note mono">{n}</p>{/each}
@@ -257,7 +286,8 @@
 
 		<!-- TARGET BUNDLE -->
 		<section class="sec">
-			<h3 class="shead display"><span class="sn">03</span> Target bundle — the goal's mechanism</h3>
+			<h3 class="shead display"><span class="sn">03</span> Target bundle — the goal's mechanism <span class="hypbadge mono">a-priori hypothesis · human-defined</span></h3>
+			<p class="scap">These targets and the mechanism below are the <b>question we set out to test</b>, defined in the goal — not something the pipeline discovered. The measured binding above (section 02) is the independent evidence against them.</p>
 			<div class="tgrid">
 				{#each dossier.targets as t}
 					<div class="tcard">
@@ -336,7 +366,7 @@
 				{#each dossier.literature as l}<span class="litchip mono">{l.term} <b>{l.count.toLocaleString()}</b></span>{/each}
 			</div>
 			<ul class="cav">{#each dossier.caveats as c}<li>{c}</li>{/each}</ul>
-			<p class="prov mono">Generated {new Date(dossier.generatedAt).toISOString().slice(0, 16).replace('T', ' ')} · live from LOTUS · PubChem · ChEMBL · UniProt · PubMed. Every value traces to an open record.</p>
+			<p class="prov mono">Generated {new Date(dossier.generatedAt).toISOString().slice(0, 16).replace('T', ' ')} · {dossier.provenance?.mode === 'sandbox' ? 'clean-room (seeding + cache OFF)' : 'demo'} · PubChem · ChEMBL · UniProt · PubMed. Molecular identity, binding and literature are live-derived; the target bundle and mechanism are the human-defined hypothesis.</p>
 		</section>
 
 		<!-- SAVE & COMPARE -->
@@ -372,6 +402,109 @@
 {/if}
 
 <style>
+	/* clean-room / provenance UI */
+	.genrow {
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+		flex-wrap: wrap;
+	}
+	.sbx {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.72rem;
+		color: var(--muted, #8a8a8a);
+		cursor: pointer;
+		border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+		border-radius: 999px;
+		padding: 0.35rem 0.7rem;
+		user-select: none;
+	}
+	.sbx.on {
+		color: #7c5cff;
+		border-color: #7c5cff;
+		background: color-mix(in srgb, #7c5cff 10%, transparent);
+	}
+	.sbx input {
+		accent-color: #7c5cff;
+		margin: 0;
+	}
+	.provbar {
+		border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+		border-radius: 10px;
+		padding: 0.75rem 0.9rem;
+		margin: 0.4rem 0 1rem;
+		background: color-mix(in srgb, currentColor 4%, transparent);
+	}
+	.provbar.sandbox {
+		border-color: #7c5cff;
+		background: color-mix(in srgb, #7c5cff 8%, transparent);
+	}
+	.pbhead {
+		font-size: 0.74rem;
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.pbmode {
+		font-weight: 700;
+	}
+	.pbdot {
+		opacity: 0.4;
+	}
+	.pbnote {
+		font-size: 0.72rem;
+		opacity: 0.8;
+		margin: 0.4rem 0 0.55rem;
+		line-height: 1.5;
+	}
+	.pblegend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+	.ptag {
+		font-size: 0.64rem;
+		font-family: var(--mono, monospace);
+		padding: 0.18rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		white-space: nowrap;
+	}
+	.ptag.live {
+		color: #1a9e6a;
+		border-color: color-mix(in srgb, #1a9e6a 40%, transparent);
+		background: color-mix(in srgb, #1a9e6a 10%, transparent);
+	}
+	.ptag.hyp {
+		color: #c2792b;
+		border-color: color-mix(in srgb, #c2792b 40%, transparent);
+		background: color-mix(in srgb, #c2792b 10%, transparent);
+	}
+	.ptag.kb {
+		color: #5a7bd8;
+		border-color: color-mix(in srgb, #5a7bd8 40%, transparent);
+		background: color-mix(in srgb, #5a7bd8 10%, transparent);
+	}
+	.ptag.heur {
+		color: #9a8a9a;
+		border-color: color-mix(in srgb, #9a8a9a 40%, transparent);
+		background: color-mix(in srgb, #9a8a9a 10%, transparent);
+	}
+	.hypbadge {
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: #c2792b;
+		border: 1px solid color-mix(in srgb, #c2792b 40%, transparent);
+		background: color-mix(in srgb, #c2792b 10%, transparent);
+		border-radius: 999px;
+		padding: 0.15rem 0.5rem;
+		vertical-align: middle;
+		margin-left: 0.5rem;
+		letter-spacing: 0;
+	}
 	.hero {
 		padding-block: 3.5rem 1.5rem;
 		text-align: center;

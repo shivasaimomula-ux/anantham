@@ -4,6 +4,7 @@
 // the lead active, why each database is consulted and how they connect to produce
 // the result. This is the defensible "show your work" artifact.
 import { resolvePlant } from './resolve';
+import { getRequestContext } from './cache';
 import { getCompound } from './sources/pubchem';
 import { directedActivity, type DirectedHit } from './sources/chembl';
 import { getProteinByAccession } from './sources/uniprot';
@@ -11,6 +12,35 @@ import { coMentionCount } from './sources/pubmed';
 import { designFormulation, type FormulationPlan } from './formulate';
 import { getGoal, type Goal } from '#lib/data/goals';
 import { getPlant } from '#lib/data/plants';
+
+// Provenance class for a field in the dossier — the whole point of the clean-room
+// work: a reader (or a reviewer) must always be able to tell what the pipeline
+// INDEPENDENTLY DERIVED from what a human SEEDED or what was served from cache.
+export type SourceClass =
+	| 'derived-live' // computed this request from an open database
+	| 'seeded-hypothesis' // human-defined a priori (the goal's targets + MOA) — NOT evidence
+	| 'seeded-catalogue' // human-curated identity (flagship compound list / traditions)
+	| 'curated-kb' // the excipient knowledge base
+	| 'heuristic'; // a model estimate, not a measurement
+
+export type DossierProvenance = {
+	mode: 'demo' | 'sandbox';
+	compoundSource: 'seeded-catalogue' | 'lotus-live';
+	freshness: 'live-fresh' | 'may-be-cached';
+	note: string;
+	// Per-section source class, so the monograph can render hypothesis and evidence
+	// as separate, non-blending blocks.
+	fields: {
+		molecularIdentity: SourceClass;
+		targetBundle: SourceClass;
+		measuredBinding: SourceClass;
+		mechanismNarrative: SourceClass;
+		excipients: SourceClass;
+		exposureIndex: SourceClass;
+		literature: SourceClass;
+		traditions: SourceClass | 'none';
+	};
+};
 
 export type TargetHit = {
 	acc: string;
@@ -64,6 +94,7 @@ export type Dossier = {
 	literature: { term: string; count: number }[];
 	caveats: string[];
 	notes: string[];
+	provenance: DossierProvenance;
 };
 
 export async function designForGoal(goalId: string, slug: string): Promise<Dossier | null> {
@@ -147,9 +178,31 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 		goal.litTerms.map(async (term) => ({ term: `${lead?.name ?? 'actives'} + ${term}`, count: lead ? await coMentionCount(term, lead.name).catch(() => 0) : 0 }))
 	);
 
-	const fromLotus = !getPlant(slug); // seeded plants come from the curated catalogue
+	const sandbox = getRequestContext()?.sandbox ?? false;
+	// In sandbox the catalogue is bypassed, so the compound list is always live LOTUS.
+	// In demo mode it is live only when the species is not a seeded flagship herb.
+	const fromLotus = sandbox || !getPlant(slug);
 	const reasoning = lead ? buildReasoning(goal, plant, lead, targets, fromLotus) : [];
 	const formulation = await designFormulation(goal, actives);
+
+	const provenance: DossierProvenance = {
+		mode: sandbox ? 'sandbox' : 'demo',
+		compoundSource: fromLotus ? 'lotus-live' : 'seeded-catalogue',
+		freshness: sandbox ? 'live-fresh' : 'may-be-cached',
+		note: sandbox
+			? 'Clean-room run: human-seeded catalogue and cache are OFF. Compounds were resolved live from LOTUS; the only seeded element is the goal itself, walled off below as an a-priori hypothesis.'
+			: 'Demo run: the compound list for a flagship species is human-curated, and values may be served from cache. Use sandbox mode to strip these priors.',
+		fields: {
+			molecularIdentity: 'derived-live',
+			targetBundle: 'seeded-hypothesis',
+			measuredBinding: 'derived-live',
+			mechanismNarrative: 'seeded-hypothesis',
+			excipients: 'curated-kb',
+			exposureIndex: 'heuristic',
+			literature: 'derived-live',
+			traditions: fromLotus || plant.traditions.length === 0 ? 'none' : 'seeded-catalogue'
+		}
+	};
 
 	return {
 		goal: { id: goal.id, label: goal.label, claimClass: goal.claimClass, route: goal.route, intent: goal.intent, summary: goal.summary, moa: goal.moa, caveats: goal.caveats },
@@ -162,7 +215,8 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 		formulation,
 		literature: litCounts,
 		caveats: goal.caveats,
-		notes: plant.traditions.length === 0 ? ['On-demand species — no curated traditional-use records; the chain below is fully computed from open databases.'] : []
+		notes: plant.traditions.length === 0 ? ['On-demand species — no curated traditional-use records; the chain below is fully computed from open databases.'] : [],
+		provenance
 	};
 }
 

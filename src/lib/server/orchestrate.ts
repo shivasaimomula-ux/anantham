@@ -6,7 +6,7 @@
 // section streams in (returning partial results rather than ever timing out).
 import { getPlant, type Plant } from '#lib/data/plants';
 import { resolvePlant } from './resolve';
-import { cached } from './cache';
+import { cached, getRequestContext } from './cache';
 import { getCompound, type PubChemCompound } from './sources/pubchem';
 import { getTargets, type ChemblTarget } from './sources/chembl';
 import { getProteinByAccession } from './sources/uniprot';
@@ -62,7 +62,10 @@ export type PlantProfile = PlantBase & {
 // LOTUS SPARQL query, so claiming it as a source would be false provenance.
 const DATASETS = ['PubChem', 'ChEMBL', 'UniProt', 'Open Targets', 'AlphaFold', 'PubMed'];
 function sourcesFor(slug: string): string[] {
-	return getPlant(slug) ? DATASETS : ['LOTUS', ...DATASETS];
+	// Sandbox always resolves live from LOTUS (catalogue bypassed); demo lists LOTUS
+	// only when the species is not a seeded flagship herb.
+	const sandbox = getRequestContext()?.sandbox ?? false;
+	return !sandbox && getPlant(slug) ? DATASETS : ['LOTUS', ...DATASETS];
 }
 
 // How long the targets fan-out may run before it returns whatever has resolved.

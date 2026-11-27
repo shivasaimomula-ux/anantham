@@ -3,7 +3,7 @@
 // descriptor LIVE from LOTUS (Wikidata) — this is what scales the platform from 6
 // plants to anything in LOTUS.
 import { getPlant, type Plant } from '#lib/data/plants';
-import { cached } from './cache';
+import { cached, getRequestContext } from './cache';
 import { lotusOccurrences, resolveTaxon } from './sources/lotus';
 
 /** "azadirachta-indica" -> "Azadirachta indica" (genus capitalised, rest lower). */
@@ -22,11 +22,20 @@ export function slugify(name: string): string {
 }
 
 export function resolvePlant(slug: string): Promise<Plant | null> {
-	const seeded = getPlant(slug);
-	if (seeded) return Promise.resolve(seeded);
+	// Clean-room (sandbox) mode ignores the human-seeded catalogue: even a flagship
+	// herb is resolved live from LOTUS, so the compound set that feeds the whole
+	// monograph is the pipeline's own, never a curated prior.
+	const sandbox = getRequestContext()?.sandbox ?? false;
+	if (!sandbox) {
+		const seeded = getPlant(slug);
+		if (seeded) return Promise.resolve(seeded);
+	}
 
 	return cached(`resolve:${slug}`, 24 * 3600_000, async () => {
-		const scientific = slugToScientific(slug);
+		// In sandbox we may borrow ONLY the scientific name from the catalogue (a
+		// taxonomic identity fact), never its curated compound list — everything below
+		// the species name is resolved live.
+		const scientific = getPlant(slug)?.scientific ?? slugToScientific(slug);
 		if (!scientific.includes(' ')) return null; // need a binomial
 		const [taxon, occ] = await Promise.all([resolveTaxon(scientific), lotusOccurrences(scientific, 8)]);
 		if (!taxon || occ.length === 0) return null; // unknown or no LOTUS occurrences
