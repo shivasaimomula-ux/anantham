@@ -74,6 +74,69 @@ async function targetDetail(tid: string): Promise<{ accession: string | null; pr
 	});
 }
 
+// ── Target-directed query (goal-first): resolve a UniProt accession to its human
+// ChEMBL target, then measure a specific compound against specific targets. This is
+// what surfaces goal-relevant targets (e.g. tyrosinase) that generic top-N ranking
+// drops because the compound is promiscuous.
+export function targetIdForAccession(acc: string): Promise<string | null> {
+	return cached(`chembl:acc2tid:${acc}`, 30 * 24 * 3600_000, async () => {
+		try {
+			const r = await getJSON<{ targets?: { target_chembl_id: string; target_type?: string }[] }>(
+				`${BASE}/target.json?target_components__accession=${acc}&organism=Homo%20sapiens&limit=5`,
+				CHEMBL_OPTS
+			);
+			// prefer a single-protein target
+			const t = r.targets?.find((x) => x.target_type === 'SINGLE PROTEIN') ?? r.targets?.[0];
+			return t?.target_chembl_id ?? null;
+		} catch {
+			return null;
+		}
+	});
+}
+
+export type DirectedHit = { acc: string; chemblTarget: string; pchembl: number; valueNm: number | null; type: string; n: number };
+
+/** Measured activity of one compound against a specific set of UniProt targets. */
+export function directedActivity(inchikey: string | null, name: string, accessions: string[]): Promise<Record<string, DirectedHit>> {
+	const key = `chembl:directed:${inchikey ?? name.toLowerCase()}:${accessions.slice().sort().join(',')}`;
+	return cached(key, 7 * 24 * 3600_000, async () => {
+		const out: Record<string, DirectedHit> = {};
+		const chemblId = await resolveChemblId(inchikey, name);
+		if (!chemblId) return out;
+
+		const tids = await Promise.all(accessions.map(async (acc) => ({ acc, tid: await targetIdForAccession(acc) })));
+		const valid = tids.filter((x): x is { acc: string; tid: string } => !!x.tid);
+		if (!valid.length) return out;
+		const tidToAcc = new Map(valid.map((v) => [v.tid, v.acc]));
+
+		let acts: { target_chembl_id?: string; pchembl_value?: string | number; standard_value?: string | number; standard_type?: string }[] = [];
+		try {
+			const r = await getJSON<{ activities?: typeof acts }>(
+				`${BASE}/activity.json?molecule_chembl_id=${chemblId}&target_chembl_id__in=${valid.map((v) => v.tid).join(',')}&pchembl_value__isnull=false&limit=200&only=target_chembl_id,pchembl_value,standard_value,standard_type`,
+				CHEMBL_OPTS
+			);
+			acts = r.activities ?? [];
+		} catch {
+			return out;
+		}
+
+		for (const a of acts) {
+			const tid = a.target_chembl_id;
+			const pv = a.pchembl_value == null ? NaN : Number(a.pchembl_value);
+			if (!tid || Number.isNaN(pv)) continue;
+			const acc = tidToAcc.get(tid);
+			if (!acc) continue;
+			const prev = out[acc];
+			if (!prev || pv > prev.pchembl) {
+				out[acc] = { acc, chemblTarget: tid, pchembl: pv, valueNm: a.standard_value == null ? null : Number(a.standard_value), type: a.standard_type ?? 'IC50', n: (prev?.n ?? 0) + 1 };
+			} else {
+				prev.n += 1;
+			}
+		}
+		return out;
+	});
+}
+
 export function getTargets(inchikey: string | null, name: string, topN = 4): Promise<ChemblResult> {
 	const key = `chembl:targets:${inchikey ?? name.toLowerCase()}:${topN}`;
 	return cached(key, 3 * 24 * 3600_000, async () => {
