@@ -147,6 +147,38 @@ export const PLANTS: Plant[] = [
 		]
 	},
 	{
+		slug: 'picrorhiza-kurroa',
+		common: 'Kutki (Picrorhiza)',
+		scientific: 'Picrorhiza kurroa',
+		family: 'Plantaginaceae',
+		taxon: { rank: 'species', ncbi: 195120 },
+		blurb: 'A high-altitude Himalayan bitter whose iridoid glycosides — picroside I, picroside II and kutkoside, together standardised as "kutkin" / "picroliv" — are among the most-studied botanical hepatoprotectants. The classical Ayurvedic liver herb Kutki (Katuki).',
+		traditions: [
+			{
+				system: 'Ayurveda',
+				uses: ['yakrit (liver) support', 'kamala (jaundice)', 'tikta bitter tonic', 'deepana-pachana (digestive fire)', 'jvara (fever)'],
+				note: 'Kutki / Katuki — the classical hepatic & bitter tonic; Tikta rasa'
+			},
+			{
+				system: 'Unani',
+				uses: ['liver & spleen disorders', 'bitter hepatic tonic', 'fever'],
+				note: 'Kutki — mufarrih and hepatic use'
+			},
+			{
+				system: 'Western',
+				uses: ['hepatoprotective (picroliv)', 'antioxidant', 'choleretic / bile flow', 'immunomodulatory'],
+				note: 'Picroliv / kutkin pharmacology literature'
+			}
+		],
+		compounds: [
+			{ name: 'picroside I' },
+			{ name: 'picroside II' },
+			{ name: 'kutkoside' },
+			{ name: 'apocynin', cid: 2214 },
+			{ name: 'androsin' }
+		]
+	},
+	{
 		slug: 'holy-basil',
 		common: 'Holy Basil (Tulsi)',
 		scientific: 'Ocimum tenuiflorum',

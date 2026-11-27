@@ -93,6 +93,31 @@ export const GOALS: Goal[] = [
 		],
 		litTerms: ['antidiabetic', 'alpha-glucosidase', 'insulin'],
 		caveats: ['Nutraceutical support claim — not a treatment for diabetes; not a substitute for prescribed therapy.']
+	},
+	{
+		id: 'hepatoprotective',
+		label: 'Hepatoprotective / Liver Support',
+		claimClass: 'nutraceutical',
+		route: 'oral',
+		intent: 'Protect hepatocytes from oxidative and inflammatory injury and support the liver’s own antioxidant defence.',
+		summary:
+			'Most liver injury — from toxins, alcohol or metabolic stress — runs through one funnel: a reactive-radical source (CYP2E1 bioactivating toxins), collapse of the cell’s antioxidant defence, and a nitrosative/inflammatory amplifier in the resident Kupffer cells. A hepatoprotective botanical should blunt the radical source, switch the antioxidant programme back on, and quiet the inflammatory amplifier — the multi-point defence a single-target drug cannot offer. This is a phenotypic, pathway-level outcome, so the honest centre of gravity is in-vivo pharmacology, not one enzyme IC50.',
+		targets: [
+			{ acc: 'P05181', gene: 'CYP2E1', role: 'Cytochrome P450 2E1 — bioactivates hepatotoxins (CCl₄→•CCl₃, paracetamol→NAPQI, ethanol) into reactive radicals', evidence: 'binding', why: 'Reducing CYP2E1-driven bioactivation cuts the radical load at its source — the upstream event in toxin-induced liver injury.' },
+			{ acc: 'P35228', gene: 'NOS2', role: 'Inducible nitric-oxide synthase — nitrosative-stress amplifier in activated Kupffer cells', evidence: 'binding', why: 'Suppressing iNOS-derived NO lowers the inflammatory amplification that turns an insult into necrosis.' },
+			{ acc: 'Q16236', gene: 'NFE2L2', role: 'Nrf2 — master transcription factor for the antioxidant-response element (HO-1, NQO1, glutathione synthesis)', evidence: 'regulatory', why: 'Activating Nrf2 restores hepatic glutathione/SOD/catalase — the defensive programme picrosides are documented to switch on, upstream of every downstream enzyme.' }
+		],
+		moa: [
+			{ step: 'Cut the radical source', mechanism: 'Reduce CYP2E1-mediated bioactivation of hepatotoxins into reactive radicals', via: ['CYP2E1'] },
+			{ step: 'Restore antioxidant defence', mechanism: 'Activate the Nrf2–ARE axis → HO-1, NQO1, glutathione resynthesis', via: ['NFE2L2'] },
+			{ step: 'Quiet the inflammatory amplifier', mechanism: 'Suppress iNOS-derived nitric oxide in Kupffer-cell activation', via: ['NOS2'] }
+		],
+		litTerms: ['hepatoprotective', 'liver injury', 'antioxidant'],
+		caveats: [
+			'Nutraceutical liver-support claim — NOT a treatment for hepatitis, fatty liver, cirrhosis or any diagnosed liver disease, and not a substitute for medical care.',
+			'Picrorhiza’s evidence is strongest in animal models and small human studies of the standardised fraction (picroliv / kutkin); measured single-target binding for the individual glycosides is sparse — the mechanism rests on in-vivo pharmacology, stated honestly rather than as a bind-and-done IC50.',
+			'Activity tracks standardisation: potency follows total picroside content (kutkin ≈ picroside I + kutkoside), not raw herb weight.'
+		]
 	}
 ];
 
