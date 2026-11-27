@@ -108,6 +108,7 @@
 
 	const dbColor: Record<string, string> = {
 		LOTUS: 'var(--jade)',
+		Catalogue: 'var(--brass)',
 		PubChem: 'var(--violet)',
 		ChEMBL: 'var(--brass)',
 		UniProt: 'var(--good)',
@@ -242,7 +243,7 @@
 						<span class="an">{a.name}</span>
 						<span class="ah mono">
 							{#each a.hits.filter((h: any) => h.pchembl != null) as h}
-								<span class="tg">{h.gene} <i>pChEMBL {fmtPc(h.pchembl)}</i></span>
+								<span class="tg" class:lc={h.lowConfidence}>{h.gene} <i>pChEMBL {fmtPc(h.pchembl)}</i>{#if h.lowConfidence}<em class="lcm" title="single cell-free record — weak evidence">⚠</em>{/if}</span>
 							{/each}
 							{#if !a.hits.some((h: any) => h.pchembl != null)}<span class="none">no measured binding</span>{/if}
 						</span>
@@ -277,10 +278,12 @@
 		<!-- FORMULATION -->
 		<section class="sec">
 			<h3 class="shead display"><span class="sn">04</span> Formulation engine ({dossier.formulation.route})</h3>
+			<p class="scap">Solubility: {dossier.formulation.admetMethod === 'model' ? 'learned ADMET model' : 'transparent heuristic (reduced ESOL)'} · exposure index is a directional heuristic, not a measured fold-change.</p>
 			<div class="fhead">
 				<div class="fexp">
+					<div class="fexpband {dossier.formulation.priorityBand}">{dossier.formulation.priorityBand} priority</div>
 					<div class="fexpn tnum">~{dossier.formulation.exposureIndex}×</div>
-					<div class="fexpl mono">est. exposure uplift vs raw extract</div>
+					<div class="fexpl mono">heuristic · directional only, not measured</div>
 					<div class="fexpb mono">{dossier.formulation.exposureBasis}</div>
 				</div>
 				<div class="fcomp">
@@ -317,10 +320,10 @@
 						<div class="excm">{e.mechanism}</div>
 						<div class="excb">
 							{#each e.addresses as a}<span class="excd mono">{a}</span>{/each}
-							{#if e.fdaProducts != null}<span class="excf mono">openFDA: {e.fdaProducts.toLocaleString()} products</span>{/if}
+							{#if e.fdaLabelMentions != null}<span class="excf mono">openFDA label mentions: {e.fdaLabelMentions.toLocaleString()}</span>{/if}
 							{#if e.evidence != null}<span class="excp mono">PubMed: {e.evidence.toLocaleString()}</span>{/if}
 						</div>
-						{#if e.precedent}<div class="excpr mono">precedent · {e.precedent}</div>{/if}
+						{#if e.precedent}<div class="excpr mono">precedent · {e.precedent}{#if e.precedentCaveat} <span class="exccav">⚠ {e.precedentCaveat}</span>{/if}</div>{/if}
 					</div>
 				{/each}
 			</div>
@@ -857,11 +860,42 @@
 		justify-content: center;
 		min-width: 11rem;
 	}
+	.fexpband {
+		font-family: var(--font-mono);
+		font-size: 0.56rem;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		padding: 0.15rem 0.45rem;
+		border-radius: 999px;
+		width: fit-content;
+		margin-bottom: 0.4rem;
+		color: #04110b;
+	}
+	.fexpband.high {
+		background: var(--good);
+	}
+	.fexpband.moderate {
+		background: var(--warn);
+	}
+	.fexpband.low {
+		background: var(--bone-faint);
+	}
 	.fexpn {
 		font-family: var(--font-display);
 		font-size: 2.6rem;
 		line-height: 1;
 		color: var(--jade);
+	}
+	.exccav {
+		color: var(--warn);
+	}
+	.tg.lc {
+		border-color: var(--warn);
+	}
+	.lcm {
+		color: var(--warn);
+		font-style: normal;
+		margin-left: 0.2rem;
 	}
 	.fexpl {
 		font-size: 0.62rem;

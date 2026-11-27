@@ -81,7 +81,9 @@ export function getPlantBase(slug: string): Promise<PlantBase | null> {
 		const plant = await resolvePlant(slug);
 		if (!plant) return null;
 
-		const picks = plant.compounds.slice(0, 6);
+		// Natural occurrences only — semi-synthetic derivatives (e.g. artesunate) are
+		// excluded so they are never treated as plant constituents.
+		const picks = plant.compounds.filter((c) => !c.derivative).slice(0, 6);
 		const settled = await Promise.allSettled(picks.map((c) => getCompound(c)));
 		const resolved = settled
 			.map((s) => (s.status === 'fulfilled' && s.value ? s.value : null))

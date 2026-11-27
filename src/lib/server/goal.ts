@@ -10,6 +10,7 @@ import { getProteinByAccession } from './sources/uniprot';
 import { coMentionCount } from './sources/pubmed';
 import { designFormulation, type FormulationPlan } from './formulate';
 import { getGoal, type Goal } from '#lib/data/goals';
+import { getPlant } from '#lib/data/plants';
 
 export type TargetHit = {
 	acc: string;
@@ -20,6 +21,8 @@ export type TargetHit = {
 	pchembl: number | null;
 	valueNm: number | null;
 	type: string | null;
+	records: number;
+	lowConfidence: boolean;
 };
 
 export type ActiveScore = {
@@ -89,7 +92,9 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 					chemblTarget: d?.chemblTarget ?? null,
 					pchembl: d?.pchembl ?? null,
 					valueNm: d?.valueNm ?? null,
-					type: d?.type ?? null
+					type: d?.type ?? null,
+					records: d?.n ?? 0,
+					lowConfidence: d?.lowConfidence ?? false
 				};
 			});
 			const maxPchembl = Math.max(0, ...hits.map((h) => h.pchembl ?? 0));
@@ -142,7 +147,8 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 		goal.litTerms.map(async (term) => ({ term: `${lead?.name ?? 'actives'} + ${term}`, count: lead ? await coMentionCount(term, lead.name).catch(() => 0) : 0 }))
 	);
 
-	const reasoning = lead ? buildReasoning(goal, plant, lead, targets) : [];
+	const fromLotus = !getPlant(slug); // seeded plants come from the curated catalogue
+	const reasoning = lead ? buildReasoning(goal, plant, lead, targets, fromLotus) : [];
 	const formulation = await designFormulation(goal, actives);
 
 	return {
@@ -161,17 +167,17 @@ export async function designForGoal(goalId: string, slug: string): Promise<Dossi
 }
 
 // ── The database reasoning chain (the "show your work" artifact) ──────────────
-function buildReasoning(goal: Goal, plant: Awaited<ReturnType<typeof resolvePlant>>, lead: ActiveScore, targets: Dossier['targets']): ReasonStep[] {
+function buildReasoning(goal: Goal, plant: Awaited<ReturnType<typeof resolvePlant>>, lead: ActiveScore, targets: Dossier['targets'], fromLotus: boolean): ReasonStep[] {
 	const p = plant!;
 	const boundHit = lead.hits.filter((h) => h.pchembl != null).sort((a, b) => (b.pchembl ?? 0) - (a.pchembl ?? 0))[0];
 	const steps: ReasonStep[] = [];
 
 	steps.push({
-		database: 'LOTUS',
+		database: fromLotus ? 'LOTUS' : 'Catalogue',
 		question: `Does ${p.common} (${p.scientific}) actually contain ${lead.name}?`,
-		connects: 'taxon name → compound, via the "found in taxon" (P703) occurrence relation',
+		connects: fromLotus ? 'taxon name → compound, via a live Wikidata "found in taxon" (P703) LOTUS query' : 'curated catalogue entry (LOTUS occurrence + established phytochemistry), not a live query',
 		finding: `${lead.name} is recorded as a constituent of ${p.scientific}.`,
-		whyItMatters: 'Establishes the candidate is genuinely present in the plant — the claim starts from a real occurrence, not an assumption.'
+		whyItMatters: 'Establishes the candidate is genuinely present in the plant — the claim starts from a documented occurrence, not an assumption.'
 	});
 
 	steps.push({
@@ -189,8 +195,8 @@ function buildReasoning(goal: Goal, plant: Awaited<ReturnType<typeof resolvePlan
 			database: 'ChEMBL',
 			question: `Does ${lead.name} measurably engage the goal target ${boundHit.gene}?`,
 			connects: `InChIKey → ChEMBL molecule; UniProt ${boundHit.acc} → ChEMBL target ${boundHit.chemblTarget}; joined on measured bioactivities`,
-			finding: `${boundHit.type ?? 'IC50'} ${boundHit.valueNm != null ? `${fmtNm(boundHit.valueNm)} ` : ''}(pChEMBL ${boundHit.pchembl}) against ${boundHit.gene}.`,
-			whyItMatters: `${boundHit.gene} is ${t?.role ?? 'a goal target'} — a measured interaction here is the core, directly-cited mechanistic evidence for the ${goal.label} claim.`,
+			finding: `${boundHit.type ?? 'IC50'} ${boundHit.valueNm != null ? `${fmtNm(boundHit.valueNm)} ` : ''}(pChEMBL ${boundHit.pchembl}) against ${boundHit.gene}, from ${boundHit.records} measurement${boundHit.records === 1 ? '' : 's'}.${boundHit.lowConfidence ? ' ⚠ single cell-free record — weak evidence, confirm in-house.' : ''}`,
+			whyItMatters: `${boundHit.gene} is ${t?.role ?? 'a goal target'} — a measured interaction here is the core, directly-cited mechanistic evidence for the ${goal.label} claim${boundHit.lowConfidence ? ', but a lone record is a hypothesis to test, not proof' : ''}.`,
 			evidence: { label: `${boundHit.gene} pChEMBL`, value: String(boundHit.pchembl) }
 		});
 	} else {
@@ -226,7 +232,7 @@ function buildReasoning(goal: Goal, plant: Awaited<ReturnType<typeof resolvePlan
 	steps.push({
 		database: '→ Conclusion',
 		question: `Is ${lead.name} a defensible ${goal.label} lead from ${p.common}?`,
-		connects: 'LOTUS → PubChem → ChEMBL → UniProt → PubMed form one traceable chain',
+		connects: `${fromLotus ? 'LOTUS' : 'Catalogue'} → PubChem → ChEMBL → UniProt → PubMed form one traceable chain`,
 		finding: `${lead.name}: ${boundHit ? `measured ${boundHit.gene} ${boundHit.type ?? 'inhibitor'} (pChEMBL ${boundHit.pchembl})` : 'regulatory-level target engagement'}, route-fit ${lead.routeFit}, ${lead.literature.toLocaleString()} supporting papers.`,
 		whyItMatters: 'Every number links to an open record; the mechanism is coherent across independent databases. That is the defensibility.'
 	});

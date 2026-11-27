@@ -283,7 +283,11 @@
 				</div>
 				<div class="meta mono">
 					{profile.plant.family} · {profile.plant.traditions.length} traditions ·
-					<a class="src" href="https://www.wikidata.org" target="_blank" rel="noopener">LOTUS occurrence data</a>
+					{#if profile.plant.taxon?.wikidata}
+						<a class="src" href="https://www.wikidata.org/wiki/{profile.plant.taxon.wikidata}" target="_blank" rel="noopener">LOTUS occurrence (Wikidata {profile.plant.taxon.wikidata})</a>
+					{:else}
+						<span class="src">curated occurrence (catalogue)</span>
+					{/if}
 					{#if profile.provenance}
 						· <span class="prov">{profile.provenance.store ? 'served from store' : 'live from source'}{#if profile.provenance.fetchedAt} · {new Date(profile.provenance.fetchedAt).toISOString().slice(0, 10)}{/if}</span>
 					{/if}

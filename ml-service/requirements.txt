@@ -1,0 +1,14 @@
+# Core service
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# Cheminformatics / ML (needed once models are trained)
+rdkit==2024.9.4
+numpy==2.2.1
+scikit-learn==1.6.0
+lightgbm==4.5.0
+# chemprop==2.1.2          # D-MPNN for ADMET — uncomment when wiring Module 1
+# PyTDC==1.1.1             # Therapeutics Data Commons dataset loaders
+
+requests==2.32.3

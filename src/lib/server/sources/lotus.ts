@@ -4,6 +4,7 @@
 // P662 PubChem CID, P225 taxon name, P1843 common name, P171 parent taxon.
 import { getJSON } from '../http';
 import { cached } from '../cache';
+import { isUbiquitousPrimary, inchiSkeleton } from './npfilter';
 
 const ENDPOINT = 'https://query.wikidata.org/sparql';
 
@@ -31,7 +32,7 @@ export function lotusOccurrences(scientific: string, limit = 10): Promise<LotusC
   OPTIONAL { ?c wdt:P662 ?cid. }
   OPTIONAL { ?c wdt:P235 ?inchikey. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-} GROUP BY ?cLabel ?cid ?inchikey ORDER BY DESC(?refs) LIMIT ${limit * 3}`;
+} GROUP BY ?cLabel ?cid ?inchikey ORDER BY DESC(?refs) LIMIT ${limit * 6}`;
 
 		let rows: Binding[] = [];
 		try {
@@ -48,10 +49,13 @@ export function lotusOccurrences(scientific: string, limit = 10): Promise<LotusC
   OPTIONAL { ?c wdt:P662 ?cid. }
   OPTIONAL { ?c wdt:P235 ?inchikey. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-} LIMIT ${limit * 3}`;
+} LIMIT ${limit * 6}`;
 			rows = (await sparql(plain)).results?.bindings ?? [];
 		}
 
+		// Deduplicate on the InChIKey connectivity block (merges salts/stereoisomers/
+		// charge variants — the reason "phenol" appeared twice for neem) and drop
+		// ubiquitous primary metabolites so secondary metabolites surface.
 		const seen = new Set<string>();
 		const out: LotusCompound[] = [];
 		for (const b of rows) {
@@ -59,7 +63,9 @@ export function lotusOccurrences(scientific: string, limit = 10): Promise<LotusC
 			const cid = b.cid ? Number(b.cid.value) : undefined;
 			const inchikey = b.inchikey?.value;
 			if (!name || (!cid && !inchikey)) continue;
-			const key = cid ? `cid:${cid}` : `ik:${inchikey}`;
+			if (/^Q\d+$/.test(name)) continue; // unlabelled Wikidata item
+			if (isUbiquitousPrimary(name)) continue;
+			const key = inchiSkeleton(inchikey) ?? (cid ? `cid:${cid}` : `nm:${name.toLowerCase()}`);
 			if (seen.has(key)) continue;
 			seen.add(key);
 			out.push({ name, cid, inchikey, refs: b.refs ? Number(b.refs.value) : 0 });

@@ -37,18 +37,17 @@ async function resolveChemblId(inchikey: string | null, name: string): Promise<s
 			);
 			if (r.molecules?.[0]) return r.molecules[0].molecule_chembl_id;
 		} catch {
-			/* fall through to name */
+			/* InChIKey lookup failed — try the name search next */
 		}
 	}
-	try {
-		const r = await getJSON<{ molecules?: { molecule_chembl_id: string }[] }>(
-			`${BASE}/molecule/search.json?q=${encodeURIComponent(name)}&limit=1`,
-			CHEMBL_OPTS
-		);
-		return r.molecules?.[0]?.molecule_chembl_id ?? null;
-	} catch {
-		return null;
-	}
+	// NOTE: a fetch error here is NOT caught — it propagates so callers (which run
+	// under cached()) never store a failure as "not in ChEMBL". A successful but
+	// empty response returns null and IS cacheable (genuine absence).
+	const r = await getJSON<{ molecules?: { molecule_chembl_id: string }[] }>(
+		`${BASE}/molecule/search.json?q=${encodeURIComponent(name)}&limit=1`,
+		CHEMBL_OPTS
+	);
+	return r.molecules?.[0]?.molecule_chembl_id ?? null;
 }
 
 type TargetDetail = {
@@ -94,7 +93,28 @@ export function targetIdForAccession(acc: string): Promise<string | null> {
 	});
 }
 
-export type DirectedHit = { acc: string; chemblTarget: string; pchembl: number; valueNm: number | null; type: string; n: number };
+export type DirectedHit = { acc: string; chemblTarget: string; pchembl: number; valueNm: number | null; type: string; n: number; lowConfidence: boolean };
+
+// Convert a ChEMBL standard_value to nanomolar using its declared units — never
+// assume nM (ChEMBL mixes nM, µM, M, %, ug.mL-1, …).
+function toNanomolar(value: number | null, units: string | undefined): number | null {
+	if (value == null || !Number.isFinite(value)) return null;
+	switch ((units ?? '').trim()) {
+		case 'nM':
+			return value;
+		case 'uM':
+		case 'µM':
+			return value * 1e3;
+		case 'mM':
+			return value * 1e6;
+		case 'M':
+			return value * 1e9;
+		case 'pM':
+			return value / 1e3;
+		default:
+			return null; // non-molar units (%, ug.mL-1, ratios) — don't fabricate an nM
+	}
+}
 
 /** Measured activity of one compound against a specific set of UniProt targets. */
 export function directedActivity(inchikey: string | null, name: string, accessions: string[]): Promise<Record<string, DirectedHit>> {
@@ -109,29 +129,45 @@ export function directedActivity(inchikey: string | null, name: string, accessio
 		if (!valid.length) return out;
 		const tidToAcc = new Map(valid.map((v) => [v.tid, v.acc]));
 
-		let acts: { target_chembl_id?: string; pchembl_value?: string | number; standard_value?: string | number; standard_type?: string }[] = [];
+		let acts: { target_chembl_id?: string; pchembl_value?: string | number; standard_value?: string | number; standard_type?: string; standard_units?: string }[] = [];
 		try {
 			const r = await getJSON<{ activities?: typeof acts }>(
-				`${BASE}/activity.json?molecule_chembl_id=${chemblId}&target_chembl_id__in=${valid.map((v) => v.tid).join(',')}&pchembl_value__isnull=false&limit=200&only=target_chembl_id,pchembl_value,standard_value,standard_type`,
+				`${BASE}/activity.json?molecule_chembl_id=${chemblId}&target_chembl_id__in=${valid.map((v) => v.tid).join(',')}&pchembl_value__isnull=false&limit=200&only=target_chembl_id,pchembl_value,standard_value,standard_type,standard_units`,
 				CHEMBL_OPTS
 			);
 			acts = r.activities ?? [];
-		} catch {
-			return out;
+		} catch (e) {
+			// A fetch FAILURE must not be cached as "no activity" — rethrow so the
+			// empty result is never stored (it self-heals on retry). A genuine empty
+			// `acts` (ChEMBL reachable, no records) is cacheable below.
+			throw e;
 		}
 
+		// Count measurements per target (for a confidence flag) and keep the best.
+		const counts = new Map<string, number>();
 		for (const a of acts) {
 			const tid = a.target_chembl_id;
 			const pv = a.pchembl_value == null ? NaN : Number(a.pchembl_value);
 			if (!tid || Number.isNaN(pv)) continue;
 			const acc = tidToAcc.get(tid);
 			if (!acc) continue;
+			counts.set(acc, (counts.get(acc) ?? 0) + 1);
 			const prev = out[acc];
 			if (!prev || pv > prev.pchembl) {
-				out[acc] = { acc, chemblTarget: tid, pchembl: pv, valueNm: a.standard_value == null ? null : Number(a.standard_value), type: a.standard_type ?? 'IC50', n: (prev?.n ?? 0) + 1 };
-			} else {
-				prev.n += 1;
+				out[acc] = {
+					acc,
+					chemblTarget: tid,
+					pchembl: pv,
+					valueNm: toNanomolar(a.standard_value == null ? null : Number(a.standard_value), a.standard_units),
+					type: a.standard_type ?? 'IC50',
+					n: 0,
+					lowConfidence: false
+				};
 			}
+		}
+		for (const [acc, hit] of Object.entries(out)) {
+			hit.n = counts.get(acc) ?? 1;
+			hit.lowConfidence = hit.n < 2; // single cell-free record → treat as weak evidence
 		}
 		return out;
 	});

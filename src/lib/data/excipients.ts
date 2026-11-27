@@ -128,7 +128,7 @@ export const EXCIPIENTS: Excipient[] = [
 		name: 'pH / citrate buffer',
 		class: 'Stabiliser',
 		addresses: ['stability'],
-		mechanism: 'Holds a pH where the active resists hydrolytic / alkaline degradation (e.g. curcumin at neutral pH).',
+		mechanism: 'Holds a pH where the active resists hydrolytic degradation (e.g. curcumin is stable at acidic ~pH 5 and degrades rapidly above neutral).',
 		potency: 0.5,
 		regulatory: 'GRAS',
 		precedent: undefined
@@ -151,7 +151,7 @@ export const EXCIPIENTS: Excipient[] = [
 // ingredients, so they map to null and are shown as strategies instead.
 export const FDA_TERMS: Record<string, string | null> = {
 	phospholipid: 'lecithin',
-	hpbcd: 'betadex',
+	hpbcd: 'hydroxypropyl betadex',
 	sedds: null,
 	'solid-dispersion': 'povidone',
 	tpgs: 'tocophersolan',

@@ -19,6 +19,8 @@ export type CatalogCompound = {
 	name: string;
 	/** Optional PubChem CID hint; when absent the name is resolved live. */
 	cid?: number;
+	/** Semi-synthetic derivative (e.g. artesunate) — NOT a natural plant occurrence. */
+	derivative?: boolean;
 };
 
 export type Plant = {
@@ -122,8 +124,8 @@ export const PLANTS: Plant[] = [
 		],
 		compounds: [
 			{ name: 'artemisinin', cid: 68827 },
-			{ name: 'artesunate', cid: 6917864 },
-			{ name: 'dihydroartemisinin', cid: 456410 }
+			{ name: 'artesunate', cid: 6917864, derivative: true },
+			{ name: 'dihydroartemisinin', cid: 456410, derivative: true }
 		]
 	},
 	{

@@ -6,6 +6,7 @@
 import { EXCIPIENTS, FDA_TERMS, EVIDENCE_TERMS, type Excipient } from '#lib/data/excipients';
 import { ingredientUsage } from './sources/openfda';
 import { coMentionCount } from './sources/pubmed';
+import { predictSolubility, type Prediction } from './predict';
 import type { Goal } from '#lib/data/goals';
 
 export type DiagKind = 'solubility' | 'permeability' | 'metabolism' | 'stability' | 'photostability';
@@ -20,7 +21,8 @@ export type ExcipientPick = {
 	potency: number;
 	regulatory: string;
 	precedent: string | null;
-	fdaProducts: number | null; // live openFDA count
+	precedentCaveat: string | null; // e.g. an oral PK precedent shown on a topical route
+	fdaLabelMentions: number | null; // live openFDA label mentions (NOT IID potency limits)
 	evidence: number | null; // live PubMed co-mention (active + excipient)
 };
 
@@ -38,14 +40,18 @@ export type FormulationPlan = {
 	deficiencies: Deficiency[];
 	excipients: ExcipientPick[];
 	coverage: number; // fraction of deficiencies addressed
-	exposureIndex: number; // relative uplift vs raw active (model estimate)
+	exposureIndex: number; // relative uplift vs raw active — HEURISTIC estimate, directional
 	exposureBasis: string;
+	priorityBand: 'low' | 'moderate' | 'high'; // qualitative — the honest headline
+	method: string; // how exposureIndex was produced (heuristic vs learned model)
+	admetMethod: 'model' | 'heuristic' | 'none'; // how the solubility input was produced
 	complementarity: Complementarity;
 	rationale: string;
 };
 
 type ActiveLike = {
 	name: string;
+	smiles: string | null;
 	mw: number | null;
 	xlogp: number | null;
 	tpsa: number | null;
@@ -69,7 +75,10 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 	const route = goal.route;
 	const lead = actives[0] ?? null;
 
-	const deficiencies = lead ? diagnose(route, lead) : [];
+	// Solubility goes through the ML-ready boundary (trained model when configured,
+	// transparent heuristic otherwise — the result is labeled either way).
+	const sol = lead ? await predictSolubility(lead.smiles, lead.xlogp, lead.mw) : null;
+	const deficiencies = lead ? diagnose(route, lead, sol) : [];
 
 	// Match excipients: for each deficiency, the route-appropriate options that
 	// address it, best potency first; keep the top two per deficiency.
@@ -87,10 +96,15 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 			.map(async (e) => {
 				const fdaTerm = FDA_TERMS[e.id];
 				const evTerm = EVIDENCE_TERMS[e.id];
-				const [fdaProducts, evidence] = await Promise.all([
+				const [fdaLabelMentions, evidence] = await Promise.all([
 					fdaTerm ? ingredientUsage(fdaTerm).catch(() => null) : Promise.resolve(null),
 					lead && evTerm ? coMentionCount(lead.name, evTerm).catch(() => null) : Promise.resolve(null)
 				]);
+				// An oral PK fold-change precedent (e.g. "Meriva ~29× bioavailability")
+				// must NOT be read as a topical claim — flag it when routes differ.
+				const precedent = e.precedent ?? null;
+				const oralClaim = precedent ? /bioavailab|×|fold|AUC/i.test(precedent) : false;
+				const precedentCaveat = precedent && oralClaim && route === 'topical' ? 'Oral PK precedent — not transferable to a topical (skin) product.' : null;
 				return {
 					id: e.id,
 					name: e.name,
@@ -99,8 +113,9 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 					addresses: e.addresses as DiagKind[],
 					potency: e.potency,
 					regulatory: e.regulatory,
-					precedent: e.precedent ?? null,
-					fdaProducts,
+					precedent,
+					precedentCaveat,
+					fdaLabelMentions,
 					evidence
 				};
 			})
@@ -123,6 +138,7 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 
 	const complementarity = complement(goal, actives);
 	const exposureBasis = route === 'topical' ? 'epidermal deposition × photostability (not oral AUC)' : 'oral AUC (absorption × reduced first-pass)';
+	const priorityBand: FormulationPlan['priorityBand'] = exposureIndex >= 5 ? 'high' : exposureIndex >= 2 ? 'moderate' : 'low';
 
 	return {
 		route,
@@ -132,22 +148,26 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 		coverage: round(coverage),
 		exposureIndex,
 		exposureBasis,
+		priorityBand,
+		method: 'Heuristic (potency × severity model) — directional priority only, not a measured or learned fold-change. A learned route-specific PK/skin-permeation model replaces this when ADMET_SERVICE_URL is configured.',
+		admetMethod: sol?.method ?? 'none',
 		complementarity,
 		rationale: rationale(route, lead?.name ?? 'the lead active', picks, exposureIndex, complementarity)
 	};
 }
 
-function diagnose(route: 'topical' | 'oral', a: ActiveLike): Deficiency[] {
+function diagnose(route: 'topical' | 'oral', a: ActiveLike, sol: Prediction | null): Deficiency[] {
 	const out: Deficiency[] = [];
 	const clamp = (v: number, lo = 0.3, hi = 1) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo);
 	const o = oxygens(a.formula);
-	const aromatic = hasAromatic(a.name); // placeholder; refined via formula below
 	const polyphenol = o >= 4; // oxygen-rich → likely polyphenolic / oxidation-prone
 
-	// Solubility — reduced ESOL from logP + MW.
-	if (a.xlogp != null && a.mw != null) {
-		const logS = 0.16 - 0.63 * a.xlogp - 0.0062 * a.mw;
-		if (logS < -3.5) out.push({ kind: 'solubility', label: DEFICIENCY_LABEL.solubility, severity: clamp((-3.5 - logS) / 3), reason: `Estimated logS ${logS.toFixed(1)} (reduced ESOL from logP ${a.xlogp}, MW ${a.mw}).` });
+	// Solubility — from the prediction boundary (model or heuristic, labeled).
+	const logS = sol?.value ?? null;
+	if (logS != null && logS < -3.5) {
+		const tag = sol?.method === 'model' ? `model logS ${logS}${sol.uncertainty != null ? ` ±${sol.uncertainty}` : ''}` : `heuristic logS ${logS.toFixed(1)} (reduced ESOL)`;
+		const dom = sol?.inDomain === false ? ' — out of applicability domain, indicative only' : '';
+		out.push({ kind: 'solubility', label: DEFICIENCY_LABEL.solubility, severity: clamp((-3.5 - logS) / 3), reason: `${tag}${dom}.` });
 	}
 
 	if (route === 'oral') {
@@ -163,7 +183,6 @@ function diagnose(route: 'topical' | 'oral', a: ActiveLike): Deficiency[] {
 	// Chemical stability — polyphenols oxidise; flag for both routes.
 	if (polyphenol) out.push({ kind: 'stability', label: DEFICIENCY_LABEL.stability, severity: 0.5, reason: `Polyphenolic active liable to oxidative degradation; needs an antioxidant / pH-controlled vehicle.` });
 
-	void aromatic;
 	return out;
 }
 
@@ -185,9 +204,9 @@ function complement(goal: Goal, actives: ActiveLike[]): Complementarity {
 function rationale(route: 'topical' | 'oral', lead: string, picks: ExcipientPick[], idx: number, comp: Complementarity): string {
 	const top = picks[0]?.name ?? 'a functional carrier';
 	if (route === 'topical') {
-		return `${lead} is delivered via ${top.toLowerCase()} so it survives light and reaches the epidermis; with the antioxidant/pH system the estimated topical exposure uplift is ~${idx}× over the raw extract (basis: skin deposition + photostability). ${comp.note}`;
+		return `${lead} is delivered via ${top.toLowerCase()} so it survives light and reaches the epidermis; with the antioxidant/pH system the directional (heuristic) priority is ~${idx}× over the raw extract on a skin-deposition + photostability basis — not a measured fold-change. ${comp.note}`;
 	}
-	return `${lead} is paired with ${top.toLowerCase()} to raise absorption and blunt first-pass loss — an estimated ~${idx}× oral AUC uplift over the raw extract. ${comp.note}`;
+	return `${lead} is paired with ${top.toLowerCase()} to raise absorption and blunt first-pass loss — a directional (heuristic) priority of ~${idx}× oral AUC over the raw extract, not a measured value. ${comp.note}`;
 }
 
 function excipientDeficiency(k: DiagKind): 'solubility' | 'permeability' | 'metabolism' | 'stability' {
@@ -197,9 +216,6 @@ function oxygens(formula: string | null): number {
 	if (!formula) return 0;
 	const m = formula.match(/O(\d*)/);
 	return m ? (m[1] ? parseInt(m[1], 10) : 1) : 0;
-}
-function hasAromatic(_: string): boolean {
-	return true;
 }
 function round(n: number): number {
 	return Math.round(n * 100) / 100;

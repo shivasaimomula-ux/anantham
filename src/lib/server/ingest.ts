@@ -12,11 +12,15 @@ export async function ingestPlant(slug: string): Promise<IngestResult> {
 	try {
 		const base = await getPlantBase(slug);
 		if (!base) return { slug, ok: false, compounds: 0, targets: 0, ms: Date.now() - t0, error: 'unknown plant' };
-		// Targets may be slow/partial; ingest whatever resolves (null if ChEMBL is down).
+		// Targets may be slow/partial. Never persist a PARTIAL target graph as final —
+		// it would freeze an incomplete network into the store. Write base only and
+		// leave targets for a later re-ingest once the upstream recovers.
 		const tg = await getPlantTargets(slug).catch(() => null);
-		await writeProfile(base, tg);
-		const r: IngestResult = { slug, ok: true, compounds: base.compounds.length, targets: tg?.targets.length ?? 0, ms: Date.now() - t0 };
-		await logRun(slug, 'ok', `${r.compounds} compounds, ${r.targets} targets${tg?.partial ? ' (partial)' : ''}`, r.targets);
+		const finalTg = tg && !tg.partial ? tg : null;
+		await writeProfile(base, finalTg);
+		const persistedTargets = finalTg?.targets.length ?? 0;
+		const r: IngestResult = { slug, ok: true, compounds: base.compounds.length, targets: persistedTargets, ms: Date.now() - t0 };
+		await logRun(slug, 'ok', `${r.compounds} compounds, ${persistedTargets} targets${tg?.partial ? ' (targets partial — base only, not persisted)' : ''}`, persistedTargets);
 		return r;
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
