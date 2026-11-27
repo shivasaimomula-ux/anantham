@@ -37,7 +37,7 @@ export function resolvePlant(slug: string): Promise<Plant | null> {
 			scientific,
 			family: taxon.family ?? '—',
 			taxon: { rank: 'species', wikidata: taxon.wikidata ?? undefined, ncbi: taxon.ncbi ?? undefined },
-			blurb: `Profiled live from LOTUS occurrence data and open chemical databases — ${occ.length} characteristic constituents.`,
+			blurb: `Profiled live from LOTUS occurrence data and open chemical databases — ${occ.length} retrieved phytochemical${occ.length === 1 ? '' : 's'} (LOTUS), ranked by reference support. An uncurated retrieval, not a hand-verified constituent list.`,
 			traditions: [], // no curated ethnobotany for on-demand species (Phase 3)
 			compounds: occ.map((o) => ({ name: o.name, cid: o.cid }))
 		} satisfies Plant;

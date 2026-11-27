@@ -31,6 +31,7 @@ export type Complementarity = {
 	distinctTargets: number;
 	totalTargets: number;
 	actives: { name: string; covers: string[] }[];
+	complementary: boolean; // true only if a secondary active covers a target the lead does not
 	note: string;
 };
 
@@ -152,7 +153,7 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 		method: 'Heuristic (potency × severity model) — directional priority only, not a measured or learned fold-change. A learned route-specific PK/skin-permeation model replaces this when ADMET_SERVICE_URL is configured.',
 		admetMethod: sol?.method ?? 'none',
 		complementarity,
-		rationale: rationale(route, lead?.name ?? 'the lead active', picks, exposureIndex, complementarity)
+		rationale: rationale(route, lead?.name ?? 'the lead active', picks, priorityBand, complementarity)
 	};
 }
 
@@ -194,19 +195,35 @@ function complement(goal: Goal, actives: ActiveLike[]): Complementarity {
 	for (const a of perActive) for (const g of a.covers) distinctSet.add(g);
 	const distinct = distinctSet.size;
 	const score = total ? round(distinct / total) : 0;
-	const note =
-		perActive.length <= 1
-			? `A single measured active engages ${distinct}/${total} goal targets — limited polypharmacology from binding data alone.`
-			: `${perActive.length} actives jointly engage ${distinct}/${total} goal targets — the multi-active complementarity that a single-molecule drug lacks.`;
-	return { score, distinctTargets: distinct, totalTargets: total, actives: perActive, note };
+
+	// True complementarity requires a SECONDARY active to engage at least one goal
+	// target the lead does not already cover. Two actives hitting the same target are
+	// redundant polypharmacology, not complementary — don't advertise them as such.
+	const leadCovers = new Set(perActive[0]?.covers ?? []);
+	const complementary = perActive.slice(1).some((a) => a.covers.some((g) => !leadCovers.has(g)));
+
+	let note: string;
+	if (perActive.length <= 1) {
+		note = `A single measured active engages ${distinct}/${total} goal target${distinct === 1 ? '' : 's'} — limited polypharmacology from binding data alone.`;
+	} else if (complementary) {
+		note = `${perActive.length} actives jointly engage ${distinct}/${total} goal targets, and a secondary active reaches a target the lead does not — genuine multi-active complementarity that a single-molecule drug lacks.`;
+	} else {
+		note = `${perActive.length} measured actives engage the same ${distinct}/${total} goal target${distinct === 1 ? '' : 's'} — overlapping (redundant) coverage, not complementary polypharmacology.`;
+	}
+	return { score, distinctTargets: distinct, totalTargets: total, actives: perActive, complementary, note };
 }
 
-function rationale(route: 'topical' | 'oral', lead: string, picks: ExcipientPick[], idx: number, comp: Complementarity): string {
+function rationale(route: 'topical' | 'oral', lead: string, picks: ExcipientPick[], band: 'low' | 'moderate' | 'high', comp: Complementarity): string {
 	const top = picks[0]?.name ?? 'a functional carrier';
+	const bandPhrase = band === 'high' ? 'a high' : band === 'moderate' ? 'a moderate' : 'a low';
+	// Only claim an antioxidant / pH-control contribution when such an excipient was
+	// actually selected — never hard-code it into the prose.
+	const hasStabiliser = picks.some((p) => p.id === 'tocopherol' || p.id === 'ph-buffer');
+	const stabClause = hasStabiliser ? ', with an antioxidant / pH-control system holding it stable,' : '';
 	if (route === 'topical') {
-		return `${lead} is delivered via ${top.toLowerCase()} so it survives light and reaches the epidermis; with the antioxidant/pH system the directional (heuristic) priority is ~${idx}× over the raw extract on a skin-deposition + photostability basis — not a measured fold-change. ${comp.note}`;
+		return `${lead} is delivered via ${top.toLowerCase()} so it survives light and reaches the epidermis${stabClause} giving ${bandPhrase} directional priority over the raw extract on a skin-deposition + photostability basis — a qualitative heuristic ranking, not a measured fold-change. ${comp.note}`;
 	}
-	return `${lead} is paired with ${top.toLowerCase()} to raise absorption and blunt first-pass loss — a directional (heuristic) priority of ~${idx}× oral AUC over the raw extract, not a measured value. ${comp.note}`;
+	return `${lead} is paired with ${top.toLowerCase()} to raise absorption and blunt first-pass loss${stabClause} giving ${bandPhrase} directional priority on an oral-AUC basis over the raw extract — a qualitative heuristic ranking, not a measured value. ${comp.note}`;
 }
 
 function excipientDeficiency(k: DiagKind): 'solubility' | 'permeability' | 'metabolism' | 'stability' {

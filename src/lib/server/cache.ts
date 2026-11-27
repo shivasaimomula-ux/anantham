@@ -7,7 +7,7 @@ const inflight = new Map<string, Promise<unknown>>();
 
 // Cache namespace — bump this whenever a cached payload's SHAPE changes, so old
 // entries can never be served against new code (the staleness class of bug).
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 export async function cached<T>(rawKey: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
 	const key = `${CACHE_VERSION}:${rawKey}`;

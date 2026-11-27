@@ -4,7 +4,7 @@
 // (ChEMBL → UniProt → Open Targets). The explore page loads them progressively
 // so the page renders in seconds even when ChEMBL/EBI is slow, and the targets
 // section streams in (returning partial results rather than ever timing out).
-import { type Plant } from '#lib/data/plants';
+import { getPlant, type Plant } from '#lib/data/plants';
 import { resolvePlant } from './resolve';
 import { cached } from './cache';
 import { getCompound, type PubChemCompound } from './sources/pubchem';
@@ -57,7 +57,13 @@ export type PlantProfile = PlantBase & {
 	edges: Edge[];
 };
 
-const SOURCES = ['LOTUS', 'PubChem', 'ChEMBL', 'UniProt', 'Open Targets', 'AlphaFold', 'PubMed'];
+// The platform's dataset roster. LOTUS is only listed when a species was actually
+// resolved live from LOTUS — a curated catalogue plant (e.g. turmeric) never ran a
+// LOTUS SPARQL query, so claiming it as a source would be false provenance.
+const DATASETS = ['PubChem', 'ChEMBL', 'UniProt', 'Open Targets', 'AlphaFold', 'PubMed'];
+function sourcesFor(slug: string): string[] {
+	return getPlant(slug) ? DATASETS : ['LOTUS', ...DATASETS];
+}
 
 // How long the targets fan-out may run before it returns whatever has resolved.
 // Kept safely under Vercel's 60s function cap.
@@ -108,7 +114,7 @@ export function getPlantBase(slug: string): Promise<PlantBase | null> {
 			plant: meta(plant),
 			compounds,
 			literature: { count: lit.count, url: lit.url },
-			sources: SOURCES,
+			sources: sourcesFor(slug),
 			generatedAt: new Date().toISOString()
 		};
 	});

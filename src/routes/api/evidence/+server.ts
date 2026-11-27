@@ -7,8 +7,10 @@ export const GET: RequestHandler = async ({ url, setHeaders }) => {
 	const a = (url.searchParams.get('a') ?? '').trim();
 	const b = (url.searchParams.get('b') ?? '').trim();
 	if (!a || !b) throw error(400, 'need a and b');
-	const count = await coMentionCount(a, b);
-	setHeaders({ 'cache-control': 'public, max-age=3600' });
+	// null (not 0) when PubMed is unreachable — a failure is never presented as "no
+	// evidence". Only cache a real answer.
+	const count = await coMentionCount(a, b).catch(() => null);
+	setHeaders({ 'cache-control': count === null ? 'no-store' : 'public, max-age=3600' });
 	return json({
 		a,
 		b,

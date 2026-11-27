@@ -40,8 +40,8 @@ export const EXCIPIENTS: Excipient[] = [
 		addresses: ['solubility', 'stability'],
 		mechanism: 'Forms an inclusion complex that solubilises lipophilic actives and shields labile groups.',
 		potency: 0.7,
-		regulatory: 'FDA IID (oral, IV)',
-		precedent: 'Widely used solubiliser (e.g. itraconazole)'
+		regulatory: 'FDA IID (multiple routes, incl. topical) · cosmetic ingredient',
+		precedent: 'Widely used solubiliser (e.g. itraconazole); topical/cosmetic use established'
 	},
 	{
 		id: 'sedds',

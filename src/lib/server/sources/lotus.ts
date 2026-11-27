@@ -32,7 +32,7 @@ export function lotusOccurrences(scientific: string, limit = 10): Promise<LotusC
   OPTIONAL { ?c wdt:P662 ?cid. }
   OPTIONAL { ?c wdt:P235 ?inchikey. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-} GROUP BY ?cLabel ?cid ?inchikey ORDER BY DESC(?refs) LIMIT ${limit * 6}`;
+} GROUP BY ?cLabel ?cid ?inchikey ORDER BY DESC(?refs) LIMIT ${limit * 10}`;
 
 		let rows: Binding[] = [];
 		try {

@@ -282,12 +282,11 @@
 			<div class="fhead">
 				<div class="fexp">
 					<div class="fexpband {dossier.formulation.priorityBand}">{dossier.formulation.priorityBand} priority</div>
-					<div class="fexpn tnum">~{dossier.formulation.exposureIndex}×</div>
-					<div class="fexpl mono">heuristic · directional only, not measured</div>
+					<div class="fexpl mono">directional index ~{dossier.formulation.exposureIndex}× · heuristic, not a measured fold-change</div>
 					<div class="fexpb mono">{dossier.formulation.exposureBasis}</div>
 				</div>
 				<div class="fcomp">
-					<div class="fh mono">Multi-active complementarity · {Math.round(dossier.formulation.complementarity.score * 100)}%</div>
+					<div class="fh mono">{dossier.formulation.complementarity.complementary ? 'Multi-active complementarity' : 'Target coverage (overlapping)'} · {Math.round(dossier.formulation.complementarity.score * 100)}%</div>
 					<div class="fcov mono">{dossier.formulation.complementarity.distinctTargets}/{dossier.formulation.complementarity.totalTargets} goal targets engaged by measured actives</div>
 					<div class="fcl">
 						{#each dossier.formulation.complementarity.actives as a}

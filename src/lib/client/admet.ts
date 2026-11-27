@@ -44,7 +44,11 @@ export function developability(d: Descriptors): Developability {
 	const gi: 'High' | 'Low' = egan ? 'High' : 'Low';
 	const bbb: 'Likely' | 'Unlikely' = d.psa <= 79 && d.alogp >= 0.4 && d.alogp <= 6 ? 'Likely' : 'Unlikely';
 
-	const soluble = logS >= -4;
+	// BCS solubility cutoff is deliberately the SAME threshold the formulation
+	// engine uses to diagnose a solubility problem (diagnose(): logS < -3.5), so a
+	// compound can never be labeled BCS Class I ("dissolves") and "solubility-limited"
+	// on the same card.
+	const soluble = logS >= -3.5;
 	const permeable = egan;
 	const cls = soluble && permeable ? 'I' : !soluble && permeable ? 'II' : soluble && !permeable ? 'III' : 'IV';
 	const bcsNote =

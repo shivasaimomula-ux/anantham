@@ -17,7 +17,10 @@ export const GET: RequestHandler = async ({ params, setHeaders }) => {
 	if (!base) throw error(404, `Unknown plant: ${params.slug}`);
 	if (hasDb()) await writeProfile(base, null).catch(() => {}); // persist (best-effort)
 	setHeaders({ 'cache-control': 'public, max-age=300' });
-	return json({ ...base, provenance: { store: false, fetchedAt: new Date().toISOString(), datasets: ['LOTUS', 'PubChem', 'PubMed'] } });
+	// Only claim LOTUS provenance when the base layer actually resolved via LOTUS
+	// (base.sources reflects that); catalogue plants used a curated occurrence list.
+	const datasets = base.sources.includes('LOTUS') ? ['LOTUS', 'PubChem', 'PubMed'] : ['PubChem', 'PubMed'];
+	return json({ ...base, provenance: { store: false, fetchedAt: new Date().toISOString(), datasets } });
 };
 
 export const config = { maxDuration: 60 };
