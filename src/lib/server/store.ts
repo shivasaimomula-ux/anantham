@@ -348,6 +348,21 @@ export async function logRun(slug: string, status: string, note: string, targets
 	}
 }
 
+export async function searchStoredTaxa(q: string): Promise<{ slug: string; scientific: string; common: string | null }[]> {
+	const sql = db();
+	if (!sql) return [];
+	try {
+		const like = `%${q}%`;
+		const rows = await sql`
+			select slug, scientific_name, common_name from taxon
+			where scientific_name ilike ${like} or common_name ilike ${like}
+			order by common_name limit 6`;
+		return rows.map((r) => ({ slug: r.slug, scientific: r.scientific_name, common: r.common_name ?? null }));
+	} catch {
+		return [];
+	}
+}
+
 export type Provenance = { store: boolean; fetchedAt: string | null; datasets: string[] };
 
 function newestFetched(dates: (Date | null | undefined)[]): string | null {

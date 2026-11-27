@@ -100,6 +100,44 @@
 			.catch(() => {});
 	}
 
+	// ── Species search (Phase 2: any LOTUS species, not just the seeded tabs) ──
+	type SearchHit = { slug: string; scientific: string; common: string | null; source: string };
+	let searchQ = $state('');
+	let searchHits = $state<SearchHit[]>([]);
+	let searchOpen = $state(false);
+	let searchBusy = $state(false);
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function onSearchInput() {
+		clearTimeout(searchTimer);
+		const q = searchQ.trim();
+		if (q.length < 2) {
+			searchHits = [];
+			searchOpen = false;
+			return;
+		}
+		searchBusy = true;
+		searchTimer = setTimeout(async () => {
+			try {
+				const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+				const d = await r.json();
+				searchHits = d.hits ?? [];
+				searchOpen = true;
+			} catch {
+				searchHits = [];
+			} finally {
+				searchBusy = false;
+			}
+		}, 280);
+	}
+
+	function pickSearch(slug: string) {
+		searchOpen = false;
+		searchQ = '';
+		searchHits = [];
+		selectPlant(slug);
+	}
+
 	const maxLogFdr = 12;
 	const fdrBar = (fdr: number) => Math.min(100, (-Math.log10(Math.max(fdr, 1e-20)) / maxLogFdr) * 100);
 	const sourceColor: Record<string, string> = {
@@ -177,6 +215,29 @@
 				</button>
 			{/each}
 		</div>
+		<div class="search">
+			<input
+				class="searchin mono"
+				type="search"
+				placeholder="search any species — e.g. Azadirachta indica"
+				bind:value={searchQ}
+				oninput={onSearchInput}
+				onfocus={() => searchHits.length && (searchOpen = true)}
+				onblur={() => setTimeout(() => (searchOpen = false), 160)}
+			/>
+			{#if searchBusy}<span class="searchspin mono">…</span>{/if}
+			{#if searchOpen && searchHits.length}
+				<div class="results">
+					{#each searchHits as h}
+						<button class="res" onclick={() => pickSearch(h.slug)}>
+							<span class="rsci">{h.scientific}</span>
+							{#if h.common}<span class="rcommon mono">{h.common}</span>{/if}
+							<span class="rsrc mono" class:lotus={h.source === 'lotus'}>{h.source}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -229,17 +290,25 @@
 				</div>
 				<p class="blurb muted">{profile.plant.blurb}</p>
 			</div>
-			<div class="traditions">
-				{#each profile.plant.traditions as t}
-					<div class="trad rise" style="--c:{systemColor[t.system] ?? 'var(--jade)'}">
-						<h3>{t.system}</h3>
-						<ul>
-							{#each t.uses as u}<li>{u}</li>{/each}
-						</ul>
-						{#if t.note}<div class="note mono">{t.note}</div>{/if}
-					</div>
-				{/each}
-			</div>
+			{#if profile.plant.traditions.length}
+				<div class="traditions">
+					{#each profile.plant.traditions as t}
+						<div class="trad rise" style="--c:{systemColor[t.system] ?? 'var(--jade)'}">
+							<h3>{t.system}</h3>
+							<ul>
+								{#each t.uses as u}<li>{u}</li>{/each}
+							</ul>
+							{#if t.note}<div class="note mono">{t.note}</div>{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="muted notrad">
+					On-demand species resolved live from LOTUS — no curated traditional-use records yet.
+					The compounds and targets below are computed from open databases exactly as for the
+					catalogued plants.
+				</p>
+			{/if}
 		{:else}
 			<div class="traditions">
 				{#each Array(3) as _}<div class="sk tradsk"></div>{/each}
@@ -466,6 +535,80 @@
 		border-bottom-color: var(--jade);
 	}
 	.tab.on .cn {
+		color: var(--jade);
+	}
+
+	.search {
+		position: relative;
+		margin-left: auto;
+		min-width: 15rem;
+		flex-shrink: 0;
+	}
+	.searchin {
+		width: 100%;
+		background: var(--ink-2);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 0.45rem 0.9rem;
+		font-size: 0.72rem;
+		color: var(--bone);
+	}
+	.searchin:focus {
+		outline: none;
+		border-color: var(--jade-line);
+		background: var(--ink-1);
+	}
+	.searchspin {
+		position: absolute;
+		right: 0.9rem;
+		top: 0.5rem;
+		color: var(--brass);
+		font-size: 0.8rem;
+	}
+	.results {
+		position: absolute;
+		top: calc(100% + 0.4rem);
+		right: 0;
+		left: 0;
+		z-index: 50;
+		background: var(--ink-1);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius);
+		box-shadow: 0 18px 50px -16px rgba(0, 0, 0, 0.7);
+		overflow: hidden;
+	}
+	.res {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		width: 100%;
+		text-align: left;
+		padding: 0.55rem 0.8rem;
+		background: none;
+		border: none;
+		border-bottom: 1px solid var(--line);
+	}
+	.res:hover {
+		background: var(--jade-soft);
+	}
+	.rsci {
+		font-size: 0.82rem;
+		font-style: italic;
+		color: var(--bone);
+	}
+	.rcommon {
+		font-size: 0.64rem;
+		color: var(--bone-dim);
+		flex: 1;
+		min-width: 0;
+	}
+	.rsrc {
+		font-size: 0.54rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--brass);
+	}
+	.rsrc.lotus {
 		color: var(--jade);
 	}
 

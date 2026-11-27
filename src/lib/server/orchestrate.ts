@@ -4,7 +4,8 @@
 // (ChEMBL → UniProt → Open Targets). The explore page loads them progressively
 // so the page renders in seconds even when ChEMBL/EBI is slow, and the targets
 // section streams in (returning partial results rather than ever timing out).
-import { getPlant, type Plant } from '#lib/data/plants';
+import { type Plant } from '#lib/data/plants';
+import { resolvePlant } from './resolve';
 import { cached } from './cache';
 import { getCompound, type PubChemCompound } from './sources/pubchem';
 import { getTargets, type ChemblTarget } from './sources/chembl';
@@ -77,7 +78,7 @@ function meta(plant: Plant): PlantMeta {
 // ── FAST base: plant identity + PubChem compounds + literature. ───────────────
 export function getPlantBase(slug: string): Promise<PlantBase | null> {
 	return cached(`base:${slug}`, 6 * 3600_000, async () => {
-		const plant = getPlant(slug);
+		const plant = await resolvePlant(slug);
 		if (!plant) return null;
 
 		const picks = plant.compounds.slice(0, 6);
@@ -114,7 +115,7 @@ export function getPlantBase(slug: string): Promise<PlantBase | null> {
 // ── SLOW targets: ChEMBL → UniProt → Open Targets, time-budgeted & partial-safe.
 export function getPlantTargets(slug: string): Promise<PlantTargets | null> {
 	return cached(`targets:${slug}`, 6 * 3600_000, async () => {
-		const plant = getPlant(slug);
+		const plant = await resolvePlant(slug);
 		if (!plant) return null;
 		const base = await getPlantBase(slug);
 		if (!base || base.compounds.length === 0) throw new Error(`no compounds for ${slug}`);

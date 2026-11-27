@@ -1,11 +1,12 @@
 import { json, error } from '@sveltejs/kit';
 import { getPlantBase } from '#lib/server/orchestrate';
-import { readBase } from '#lib/server/store';
+import { readBase, writeProfile } from '#lib/server/store';
+import { hasDb } from '#lib/server/db';
 import type { RequestHandler } from './$types';
 
-// Serving path for the FAST half of a plant profile. Reads from the store when it
-// has the plant (instant, outage-proof); otherwise falls back to the live fan-out,
-// so the site works identically whether or not a DATABASE_URL is configured.
+// Serving path for the FAST half of a plant profile. Store-first (instant,
+// outage-proof); otherwise resolve live (seeded catalogue OR any LOTUS species) and,
+// when a store is configured, write it through so the species is now materialised.
 export const GET: RequestHandler = async ({ params, setHeaders }) => {
 	const stored = await readBase(params.slug).catch(() => null);
 	if (stored) {
@@ -14,8 +15,9 @@ export const GET: RequestHandler = async ({ params, setHeaders }) => {
 	}
 	const base = await getPlantBase(params.slug);
 	if (!base) throw error(404, `Unknown plant: ${params.slug}`);
+	if (hasDb()) await writeProfile(base, null).catch(() => {}); // persist (best-effort)
 	setHeaders({ 'cache-control': 'public, max-age=300' });
-	return json({ ...base, provenance: { store: false, fetchedAt: new Date().toISOString(), datasets: ['PubChem', 'PubMed'] } });
+	return json({ ...base, provenance: { store: false, fetchedAt: new Date().toISOString(), datasets: ['LOTUS', 'PubChem', 'PubMed'] } });
 };
 
 export const config = { maxDuration: 60 };
