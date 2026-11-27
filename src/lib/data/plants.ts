@@ -171,11 +171,11 @@ export const PLANTS: Plant[] = [
 			}
 		],
 		compounds: [
-			{ name: 'picroside I' },
-			{ name: 'picroside II' },
-			{ name: 'kutkoside' },
+			{ name: 'picroside I', cid: 6440892 },
+			{ name: 'picroside II', cid: 11944602 },
+			{ name: 'kutkoside', cid: 182265 },
 			{ name: 'apocynin', cid: 2214 },
-			{ name: 'androsin' }
+			{ name: 'androsin', cid: 164648 }
 		]
 	},
 	{
