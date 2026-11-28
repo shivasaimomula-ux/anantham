@@ -308,6 +308,9 @@
 		<!-- FORMULATION -->
 		<section class="sec">
 			<h3 class="shead display"><span class="sn">04</span> Formulation engine ({dossier.formulation.route})</h3>
+			{#if dossier.formulation.targetActive}
+				<p class="ftarget mono">Designed around <b>{dossier.formulation.targetActive}</b> — {dossier.formulation.targetBasis}</p>
+			{/if}
 			<p class="scap">Solubility: {dossier.formulation.admetMethod === 'model' ? 'learned ADMET model' : 'transparent heuristic (reduced ESOL)'} · exposure index is a directional heuristic, not a measured fold-change.</p>
 			<div class="fhead">
 				<div class="fexp">
@@ -492,6 +495,15 @@
 		color: #9a8a9a;
 		border-color: color-mix(in srgb, #9a8a9a 40%, transparent);
 		background: color-mix(in srgb, #9a8a9a 10%, transparent);
+	}
+	.ftarget {
+		font-size: 0.75rem;
+		line-height: 1.5;
+		margin: 0 0 0.3rem;
+		padding: 0.5rem 0.7rem;
+		border-left: 2px solid #c2792b;
+		background: color-mix(in srgb, #c2792b 7%, transparent);
+		border-radius: 0 6px 6px 0;
 	}
 	.hypbadge {
 		font-size: 0.6rem;

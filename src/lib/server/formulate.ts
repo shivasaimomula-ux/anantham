@@ -46,6 +46,8 @@ export type FormulationPlan = {
 	priorityBand: 'low' | 'moderate' | 'high'; // qualitative — the honest headline
 	method: string; // how exposureIndex was produced (heuristic vs learned model)
 	admetMethod: 'model' | 'heuristic' | 'none'; // how the solubility input was produced
+	targetActive: string | null; // the active the formulation is designed AROUND
+	targetBasis: string; // why that active was chosen (claim marker vs top drug-likeness)
 	complementarity: Complementarity;
 	rationale: string;
 };
@@ -57,6 +59,7 @@ type ActiveLike = {
 	xlogp: number | null;
 	tpsa: number | null;
 	formula: string | null;
+	literature: number; // goal-specific co-mentions — proxy for "carries this claim"
 	hits: { gene: string; pchembl: number | null }[];
 };
 
@@ -74,12 +77,19 @@ const TOPICAL_OK = new Set(['liposome', 'phospholipid', 'hpbcd', 'tocopherol', '
 
 export async function designFormulation(goal: Goal, actives: ActiveLike[]): Promise<FormulationPlan> {
 	const route = goal.route;
-	const lead = actives[0] ?? null;
+	const scoreLead = actives[0] ?? null; // overall top-ranked active (drug-likeness/activity)
+
+	// Formulate around the CLAIM-CARRYING MARKER — the active most documented FOR THIS
+	// GOAL — which for a botanical is frequently NOT the most drug-like molecule. (For
+	// Picrorhiza the efficacy markers are the picrosides; the top route-fit active is
+	// the small, permeable minor constituent apocynin, which needs no delivery help.)
+	// A formulation exists to deliver what carries the claim, so that is what we diagnose.
+	const marker = pickMarker(actives) ?? scoreLead;
 
 	// Solubility goes through the ML-ready boundary (trained model when configured,
 	// transparent heuristic otherwise — the result is labeled either way).
-	const sol = lead ? await predictSolubility(lead.smiles, lead.xlogp, lead.mw) : null;
-	const deficiencies = lead ? diagnose(route, lead, sol) : [];
+	const sol = marker ? await predictSolubility(marker.smiles, marker.xlogp, marker.mw) : null;
+	const deficiencies = marker ? diagnose(route, marker, sol) : [];
 
 	// Match excipients: for each deficiency, the route-appropriate options that
 	// address it, best potency first; keep the top two per deficiency.
@@ -99,7 +109,7 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 				const evTerm = EVIDENCE_TERMS[e.id];
 				const [fdaLabelMentions, evidence] = await Promise.all([
 					fdaTerm ? ingredientUsage(fdaTerm).catch(() => null) : Promise.resolve(null),
-					lead && evTerm ? coMentionCount(lead.name, evTerm).catch(() => null) : Promise.resolve(null)
+					marker && evTerm ? coMentionCount(marker.name, evTerm).catch(() => null) : Promise.resolve(null)
 				]);
 				// An oral PK fold-change precedent (e.g. "Meriva ~29× bioavailability")
 				// must NOT be read as a topical claim — flag it when routes differ.
@@ -141,9 +151,16 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 	const exposureBasis = route === 'topical' ? 'epidermal deposition × photostability (not oral AUC)' : 'oral AUC (absorption × reduced first-pass)';
 	const priorityBand: FormulationPlan['priorityBand'] = exposureIndex >= 5 ? 'high' : exposureIndex >= 2 ? 'moderate' : 'low';
 
+	const differs = marker && scoreLead && marker.name !== scoreLead.name;
+	const targetBasis = marker
+		? differs
+			? `Designed around ${marker.name} — the active most documented for this goal (${marker.literature.toLocaleString()} co-mentions) — rather than ${scoreLead?.name}, which ranks higher on drug-likeness but is not the claim-carrying marker. The product's job is to deliver what carries the claim.`
+			: `Designed around ${marker.name}, the lead active.`
+		: 'No resolvable active to formulate around.';
+
 	return {
 		route,
-		lead: lead?.name ?? null,
+		lead: marker?.name ?? null,
 		deficiencies,
 		excipients: picks,
 		coverage: round(coverage),
@@ -152,8 +169,10 @@ export async function designFormulation(goal: Goal, actives: ActiveLike[]): Prom
 		priorityBand,
 		method: 'Heuristic (potency × severity model) — directional priority only, not a measured or learned fold-change. A learned route-specific PK/skin-permeation model replaces this when ADMET_SERVICE_URL is configured.',
 		admetMethod: sol?.method ?? 'none',
+		targetActive: marker?.name ?? null,
+		targetBasis,
 		complementarity,
-		rationale: rationale(route, lead?.name ?? 'the lead active', picks, priorityBand, complementarity)
+		rationale: rationale(route, marker?.name ?? 'the lead active', picks, priorityBand, complementarity)
 	};
 }
 
@@ -185,6 +204,16 @@ function diagnose(route: 'topical' | 'oral', a: ActiveLike, sol: Prediction | nu
 	if (polyphenol) out.push({ kind: 'stability', label: DEFICIENCY_LABEL.stability, severity: 0.5, reason: `Polyphenolic active liable to oxidative degradation; needs an antioxidant / pH-controlled vehicle.` });
 
 	return out;
+}
+
+// The claim-carrying marker: the active most co-mentioned with this goal. Prefer
+// actives with a resolved structure (so diagnose() has physchem to work with), and
+// break ties toward the higher-literature one.
+function pickMarker(actives: ActiveLike[]): ActiveLike | null {
+	if (!actives.length) return null;
+	const resolved = actives.filter((a) => a.mw != null);
+	const pool = resolved.length ? resolved : actives;
+	return [...pool].sort((a, b) => (b.literature ?? 0) - (a.literature ?? 0))[0];
 }
 
 function complement(goal: Goal, actives: ActiveLike[]): Complementarity {
