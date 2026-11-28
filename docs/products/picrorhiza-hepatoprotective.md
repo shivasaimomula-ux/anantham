@@ -11,11 +11,19 @@ what is **verified live now** from what the full pipeline **computes on redeploy
 - **Verified live (this build):** molecular identity, formula, MW, PubChem CID and
   InChIKey of every active (Wikidata/PubChem, CC0); ChEMBL presence/absence of each
   active; UniProt target identity (e.g. CYP2E1 = P05181).
-- **Computes on the live site (`/api/dossier?goal=hepatoprotective&species=picrorhiza-kurroa`):**
-  live XLogP/TPSA, the directed ChEMBL activity query, PubMed co-mention counts, the
-  formulation exposure index, and the full database reasoning chain. *(The public
-  deployment was down at the time of writing — see the note at the end. The goal and
-  species are committed; the figures fill in the moment the site is redeployed.)*
+- **Ran live on the deployed site** (`/api/dossier?goal=hepatoprotective&species=picrorhiza-kurroa`,
+  demo ~15 s / clean-room ~8 s): the directed ChEMBL activity query (0/3 goal targets —
+  honestly sparse), PubMed co-mentions, the ranked actives, and the formulation (now
+  designed around picroside I). All figures below are from that live run.
+
+**Demo vs. clean-room (sandbox) — the provenance you can see:**
+Run in **demo** mode, the compound list is the curated five (`seeded-catalogue`). Run in
+**sandbox** mode (seeding + cache OFF), the pipeline resolves Kutki's compounds *live from
+LOTUS* and independently returns **apocynin, androsin, picein, picroside I, catalpol,
+cucurbitacin B** — overlapping with, but not identical to, the seed (it finds picroside I
+and genuine constituents like catalpol/cucurbitacin B on its own, and misses picroside II /
+kutkoside). That difference is the point: you can see exactly which claims survive without
+the human prior, and the goal (targets + MOA) is walled off as an *a-priori hypothesis*.
 
 ---
 
@@ -58,8 +66,16 @@ hepatoprotective marker glycosides are **large (MW 492–512) and heavily oxygen
 (11–13 O)** — i.e. **highly polar, with a permeability/bioavailability limit, not a
 solubility limit**. That is the *opposite* of curcumin's problem and it drives the
 whole formulation strategy (§6). Apocynin (MW 166) is small and lipophilic — permeable
-but a minor contributor; androsin is its glucoside. *(Live XLogP/TPSA fill in from
-PubChem on the deployed site and will quantify this.)*
+but a minor contributor; androsin is its glucoside.
+
+**Live ranking (deployed site, demo run).** The pipeline's composite score
+(0.5·activity + 0.3·route-fit + 0.2·literature) ranks the actives: apocynin 0.36,
+androsin 0.35, picroside I 0.29, picroside II 0.19, kutkoside 0.17. Read this honestly:
+because **no active has measured target binding** (activity term = 0 for all), the ranking
+collapses to route-fit + literature — so the small, permeable apocynin tops it. That is a
+scoring artefact, not a statement that apocynin is the hepatoprotective hero. The
+formulation (§6) therefore deliberately designs around **picroside I** (the claim-carrying
+marker, 21 goal co-mentions), which is the molecule the product must actually deliver.
 
 ---
 
@@ -153,19 +169,38 @@ exactly that — no more.
 3. **Standardisation to total picroside content** (kutkin/picroliv basis), not raw herb
    weight — potency tracks the markers, so the "dose" is defined on the glycosides.
 
-*(On the deployed site, the engine returns the oral exposure index, priority band and
-per-deficiency coverage for this active set; those are directional heuristics, not a
-measured fold-change — and are labelled as such.)*
+**Live engine output (ran on the deployed site, oral route):**
+The engine formulates around **picroside I** — the active most co-mentioned with the
+goal (21 papers), *not* apocynin (which ranks higher on drug-likeness but is a minor
+constituent that needs no delivery help). Diagnosed deficiencies of picroside I:
+
+| Deficiency | Severity | Reading |
+|---|---|---|
+| Low permeability | 0.77 | large, polar glycoside — the dominant, correct limit |
+| First-pass metabolism | 0.60 | glycoside hydrolysis / conjugation |
+| Chemical instability | 0.50 | oxygen-rich scaffold |
+
+Matched excipients: **phospholipid phytosome, piperine (BioPerine®), liposomal
+encapsulation, HP-β-cyclodextrin, quercetin (metabolic co-active)** — a coherent
+picroside-bioavailability stack. Priority band **high**; directional exposure index
+~17.8× (a labelled heuristic, *not* a measured fold-change — a learned PK model
+replaces it when `ADMET_SERVICE_URL` is set).
+
+> Note the honest read the engine prints alongside: *"a single measured active engages
+> 0/3 goal targets — limited polypharmacology from binding data alone."* The formulation
+> is strong on **delivering the marker**; the **efficacy** evidence still lives in §5's
+> in-vivo tier, not in target binding.
 
 ---
 
 ## 7. Validation plan (tiered — each tier reproduces a platform claim)
 
-**In-silico (platform):**
+**In-silico (platform — all ran live on the deployed site):**
 - Identity → PubChem CIDs ✓ (§2)
-- Oral drug-likeness → flags the glycoside permeability limit (the real liability)
-- Directed target binding → ChEMBL query, honestly sparse ✓ (§5)
-- Literature volume → PubMed counts *(live on redeploy)*
+- Oral drug-likeness → flagged the glycoside permeability limit (the real liability) ✓
+- Directed target binding → ChEMBL query, honestly sparse (0/3 goal targets) ✓ (§5)
+- Literature volume → PubMed co-mentions ✓ (picroside I 21 · picroside II 19 · kutkoside 9 ·
+  apocynin + antioxidant 541)
 
 **In-vitro (to commission):**
 - Hepatocyte protection: CCl₄- or tBHP-challenged HepG2 / primary hepatocytes →
@@ -209,11 +244,13 @@ measured fold-change — and are labelled as such.)*
 ---
 
 ### Provenance
-Molecular identity verified live via Wikidata/PubChem (CC0); ChEMBL presence checks and
-UniProt identity verified live. The full directed-activity query, physicochemistry,
-PubMed counts, formulation index and reasoning chain are produced by the live pipeline
-at `/api/dossier?goal=hepatoprotective&species=picrorhiza-kurroa` and on `/design`
-(goal **Hepatoprotective / Liver Support** × species **Kutki (Picrorhiza)**). The
-established picroliv/kutkin pharmacology cited in §3/§5/§7 is from the published
-hepatoprotection literature and is labelled as such, distinct from the pipeline-computed
-figures.
+Generated by the live HERBENZO pipeline on the deployed site
+(`anantham-s66h.vercel.app`): `/api/dossier?goal=hepatoprotective&species=picrorhiza-kurroa`,
+also reproducible on `/design` (goal **Hepatoprotective / Liver Support** × species
+**Kutki (Picrorhiza)**; flip the **Sandbox** toggle for the clean-room comparison).
+Molecular identity (Wikidata/PubChem, CC0), the directed ChEMBL activity query, UniProt
+target identity, PubMed co-mentions and the formulation are all pipeline-derived and
+provenance-tagged on screen. The established picroliv/kutkin pharmacology cited in §3/§5/§7
+is from the published hepatoprotection literature and is labelled as such, kept distinct
+from the pipeline-computed figures — the molecular-biology claims (targets + MOA) are the
+goal's *a-priori hypothesis*, not something the pipeline discovered.
